@@ -14,8 +14,8 @@ enum DayDreamTheme {
     static let lightSelection = NSColor(srgbRed: 0.62, green: 0.77, blue: 0.91, alpha: 0.22)
 
     // MARK: - 暗黑模式
-    /// 背景：枪灰（gunmetal）。
-    static let darkBackground = NSColor(srgbRed: 0.165, green: 0.204, blue: 0.220, alpha: 1)  // #2A3438
+    /// 背景：枪灰。
+    static let darkBackground = NSColor(srgbRed: 41.0/255.0, green: 41.0/255.0, blue: 41.0/255.0, alpha: 1) // #292929
     /// 文字：白色但不刺眼——不是纯白，也不是明显的灰。
     static let darkText = NSColor(srgbRed: 0.906, green: 0.894, blue: 0.878, alpha: 1)        // #E7E4E0
     /// 光标：淡粉色。
