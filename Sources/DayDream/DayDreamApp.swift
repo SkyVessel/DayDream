@@ -7,12 +7,16 @@ struct DayDreamApp: App {
 
     var body: some Scene {
         WindowGroup {
-            EditorView()
-                .frame(minWidth: 560, minHeight: 420)
+            WorkspaceView()
                 .background(WindowConfigurator())
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 720, height: 880)
+
+        // 设置页面：自动出现在 DayDream 应用菜单（⌘,）。
+        Settings {
+            SettingsView()
+        }
     }
 }
 
@@ -27,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         // 激活后确保焦点落在编辑器上，光标淡入。
         if let window = NSApp.keyWindow ?? NSApp.windows.first,
+           !(window.firstResponder is NSTextView),
            let textView = window.contentView?.firstTextView {
             window.makeFirstResponder(textView)
         }

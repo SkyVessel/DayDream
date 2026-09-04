@@ -8,6 +8,11 @@ let package = Package(
         .executableTarget(
             name: "DayDream",
             path: "Sources/DayDream"
+        ),
+        .testTarget(
+            name: "DayDreamTests",
+            dependencies: ["DayDream"],
+            path: "Tests/DayDreamTests"
         )
     ]
 )

@@ -53,13 +53,46 @@ enum DayDreamTheme {
         isDark(appearance) ? darkSelection : lightSelection
     }
 
-    static func textAttributes(for appearance: NSAppearance) -> [NSAttributedString.Key: Any] {
+    static func textAttributes(
+        for appearance: NSAppearance,
+        scale: CGFloat = 1,
+        blockKind: MarkdownBlockKind = .body
+    ) -> [NSAttributedString.Key: Any] {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineHeightMultiple = lineHeightMultiple
+        let pointSize: CGFloat
+        let weight: NSFont.Weight
+
+        switch blockKind {
+        case .body, .bullet, .numbered, .todo:
+            pointSize = font.pointSize
+            weight = .regular
+            // 行距：两行之间的距离，由设置页调整。
+            paragraph.lineHeightMultiple = EditorSettings.shared.lineHeightMultiple
+        case let .heading(level):
+            let sizes: [CGFloat] = [34, 28, 23, 20]
+            pointSize = sizes[min(max(level, 1), 4) - 1]
+            weight = level <= 2 ? .bold : .semibold
+            paragraph.lineHeightMultiple = 1.18
+            paragraph.paragraphSpacingBefore = 8 * scale
+            paragraph.paragraphSpacing = 5 * scale
+        }
+
+        if blockKind.isList {
+            paragraph.firstLineHeadIndent = 30 * scale
+            paragraph.headIndent = 30 * scale
+        }
+
+        let foreground: NSColor
+        if case .todo(checked: true) = blockKind {
+            foreground = text(for: appearance).withAlphaComponent(0.52)
+        } else {
+            foreground = text(for: appearance)
+        }
+
         return [
-            .font: font,
-            .foregroundColor: text(for: appearance),
-            .kern: letterSpacing,
+            .font: NSFont.systemFont(ofSize: pointSize * scale, weight: weight),
+            .foregroundColor: foreground,
+            .kern: letterSpacing * scale,
             .paragraphStyle: paragraph,
         ]
     }
