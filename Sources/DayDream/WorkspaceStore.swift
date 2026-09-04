@@ -186,6 +186,28 @@ final class WorkspaceStore: ObservableObject {
         return destination
     }
 
+    /// 复制（拷贝为新文件/新文件夹，名称自动加后缀唯一化）。
+    @discardableResult
+    func duplicate(_ url: URL) throws -> URL {
+        try flushPendingSave()
+        let source = url.standardizedFileURL
+        guard source.path.hasPrefix(rootURL.path + "/") else {
+            throw WorkspaceStoreError.outsideLibrary
+        }
+        let isNote = source.pathExtension.lowercased() == "md"
+        let baseName = isNote
+            ? source.deletingPathExtension().lastPathComponent
+            : source.lastPathComponent
+        let destination = uniqueURL(
+            in: source.deletingLastPathComponent(),
+            baseName: baseName + " copy",
+            pathExtension: isNote ? "md" : nil
+        )
+        try fileManager.copyItem(at: source, to: destination)
+        try reload()
+        return destination
+    }
+
     /// 删除（移到废纸篓，可恢复）。
     func delete(_ url: URL) throws {
         try flushPendingSave()

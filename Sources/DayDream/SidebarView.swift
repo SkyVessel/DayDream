@@ -243,7 +243,9 @@ struct SidebarView: View {
                 )
 
                 // 文件夹行悬停时出现「+」：在内部新建笔记或文件夹（可无限嵌套）。
-                if row.node.kind == .folder, hoveredURL == row.node.url {
+                // 弹窗打开期间保持显示，否则鼠标移向弹窗时按钮消失会把弹窗带走。
+                if row.node.kind == .folder,
+                   hoveredURL == row.node.url || folderAddMenuURL == row.node.url {
                     Button {
                         folderAddMenuURL = row.node.url
                     } label: {
@@ -400,12 +402,23 @@ struct SidebarView: View {
         Button("Rename…") {
             beginRename(node.url, currentName: node.name)
         }
+        Button("Duplicate") {
+            duplicateNode(node)
+        }
         Button("Reveal in Finder") {
             NSWorkspace.shared.activateFileViewerSelecting([node.url])
         }
         Divider()
         Button("Move to Trash", role: .destructive) {
             deleteNode(node)
+        }
+    }
+
+    private func duplicateNode(_ node: WorkspaceNode) {
+        do {
+            try store.duplicate(node.url)
+        } catch {
+            store.errorMessage = error.localizedDescription
         }
     }
 
