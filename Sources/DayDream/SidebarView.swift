@@ -26,6 +26,7 @@ enum SidebarTreeProjection {
 
 struct SidebarView: View {
     @ObservedObject var store: WorkspaceStore
+    @ObservedObject private var settings = EditorSettings.shared
     let isFullScreen: Bool
     @State private var expandedFolders: Set<URL> = []
     @State private var editingURL: URL?
@@ -69,13 +70,13 @@ struct SidebarView: View {
                 .frame(width: 0.5)
         }
         .alert(
-            "DayDream couldn’t complete that action",
+            L10n.t("DayDream 无法完成该操作", "DayDream couldn’t complete that action"),
             isPresented: Binding(
                 get: { store.errorMessage != nil },
                 set: { if !$0 { store.errorMessage = nil } }
             )
         ) {
-            Button("OK") { store.errorMessage = nil }
+            Button(L10n.t("好", "OK")) { store.errorMessage = nil }
         } message: {
             Text(store.errorMessage ?? "Unknown error")
         }
@@ -84,14 +85,14 @@ struct SidebarView: View {
     private var header: some View {
         HStack(spacing: 3) {
             Button(action: chooseRepository) {
-                Text("Library")
+                Text(L10n.t("笔记库", "Library"))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Choose a repository\n\(store.rootURL.path)")
-            .accessibilityLabel("Choose Library")
+            .help(L10n.t("选择笔记库", "Choose a repository") + "\n\(store.rootURL.path)")
+            .accessibilityLabel(L10n.t("选择笔记库", "Choose Library"))
 
             if store.repositoryURLs.count > 1 {
                 repositoryArrow(
@@ -122,7 +123,7 @@ struct SidebarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Add a note or folder")
+            .help(L10n.t("新建笔记或文件夹", "Add a note or folder"))
             .accessibilityLabel("Add")
             .popover(isPresented: $isAddMenuPresented, arrowEdge: .top) {
                 addMenu
@@ -136,8 +137,8 @@ struct SidebarView: View {
 
     private var addMenu: some View {
         VStack(spacing: 2) {
-            addMenuButton(title: "New Note", icon: .fileText, action: createNote)
-            addMenuButton(title: "New Folder", icon: .folder, action: createFolder)
+            addMenuButton(title: L10n.t("新建笔记", "New Note"), icon: .fileText, action: createNote)
+            addMenuButton(title: L10n.t("新建文件夹", "New Folder"), icon: .folder, action: createFolder)
         }
         .padding(6)
         .frame(width: 176)
@@ -212,7 +213,7 @@ struct SidebarView: View {
 
             if editingURL == row.node.url {
                 rowIcon(row.node)
-                TextField("Name", text: $draftName)
+                TextField(L10n.t("名称", "Name"), text: $draftName)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13.5))
                         .focused($focusedEditingURL, equals: row.node.url)
@@ -255,7 +256,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Add a note or folder inside")
+                    .help(L10n.t("在其中新建笔记或文件夹", "Add a note or folder inside"))
                     .accessibilityLabel("Add inside \(row.node.name)")
                     .popover(
                         isPresented: folderAddMenuBinding(for: row.node.url),
@@ -383,8 +384,8 @@ struct SidebarView: View {
 
     private func folderAddMenu(for folder: URL) -> some View {
         VStack(spacing: 2) {
-            addMenuButton(title: "New Note", icon: .fileText) { createNote(in: folder) }
-            addMenuButton(title: "New Folder", icon: .folder) { createFolder(in: folder) }
+            addMenuButton(title: L10n.t("新建笔记", "New Note"), icon: .fileText) { createNote(in: folder) }
+            addMenuButton(title: L10n.t("新建文件夹", "New Folder"), icon: .folder) { createFolder(in: folder) }
         }
         .padding(6)
         .frame(width: 176)
@@ -395,21 +396,21 @@ struct SidebarView: View {
     @ViewBuilder
     private func rowContextMenu(for node: WorkspaceNode) -> some View {
         if node.kind == .folder {
-            Button("New Note") { createNote(in: node.url) }
-            Button("New Folder") { createFolder(in: node.url) }
+            Button(L10n.t("新建笔记", "New Note")) { createNote(in: node.url) }
+            Button(L10n.t("新建文件夹", "New Folder")) { createFolder(in: node.url) }
             Divider()
         }
-        Button("Rename…") {
+        Button(L10n.t("重命名…", "Rename…")) {
             beginRename(node.url, currentName: node.name)
         }
-        Button("Duplicate") {
+        Button(L10n.t("复制", "Duplicate")) {
             duplicateNode(node)
         }
-        Button("Reveal in Finder") {
+        Button(L10n.t("在 Finder 中显示", "Reveal in Finder")) {
             NSWorkspace.shared.activateFileViewerSelecting([node.url])
         }
         Divider()
-        Button("Move to Trash", role: .destructive) {
+        Button(L10n.t("移到废纸篓", "Move to Trash"), role: .destructive) {
             deleteNode(node)
         }
     }

@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 struct WorkspaceView: View {
     @StateObject private var store: WorkspaceStore
+    @ObservedObject private var settings = EditorSettings.shared
     @State private var isSidebarVisible = true
     @State private var isFullScreen = false
 
@@ -65,7 +66,7 @@ struct WorkspaceView: View {
         } else {
             ZStack {
                 Color(nsColor: DayDreamTheme.background(for: NSApp.effectiveAppearance))
-                Text(store.nodes.isEmpty ? "Create your first note" : "Select a note")
+                Text(store.nodes.isEmpty ? L10n.t("创建你的第一篇笔记", "Create your first note") : L10n.t("选择一篇笔记", "Select a note"))
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(.secondary.opacity(0.58))
             }
@@ -87,8 +88,8 @@ struct WorkspaceView: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
-        .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
+        .help(isSidebarVisible ? L10n.t("隐藏侧栏", "Hide sidebar") : L10n.t("显示侧栏", "Show sidebar"))
+        .accessibilityLabel(isSidebarVisible ? L10n.t("隐藏侧栏", "Hide sidebar") : L10n.t("显示侧栏", "Show sidebar"))
     }
 
     private var sidebarToggleLeadingInset: CGFloat {

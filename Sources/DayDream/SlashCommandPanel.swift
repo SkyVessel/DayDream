@@ -1,23 +1,44 @@
 import AppKit
 
 struct SlashCommand: Identifiable, Equatable {
-    let title: String
-    let subtitle: String
     let syntax: String
     let kind: MarkdownBlockKind
 
     var id: MarkdownBlockKind { kind }
+
+    var title: String {
+        switch kind {
+        case let .heading(level): return L10n.t("标题 \(min(max(level, 1), 4))", "Heading \(min(max(level, 1), 4))")
+        case .bullet: return L10n.t("无序列表", "Bulleted list")
+        case .numbered: return L10n.t("有序列表", "Numbered list")
+        case .todo: return L10n.t("待办事项", "To-do list")
+        case .body: return L10n.t("正文", "Text")
+        }
+    }
+
+    var subtitle: String {
+        switch kind {
+        case .heading(1): return L10n.t("大节标题", "Large section title")
+        case .heading(2): return L10n.t("中节标题", "Medium section title")
+        case .heading(3): return L10n.t("小节标题", "Small section title")
+        case .heading: return L10n.t("紧凑标题", "Compact section title")
+        case .bullet: return L10n.t("创建一个无序列表", "Create a bulleted list")
+        case .numbered: return L10n.t("创建一个有序列表", "Create an ordered list")
+        case .todo: return L10n.t("用复选框跟踪任务", "Track a task with a checkbox")
+        case .body: return L10n.t("普通文本", "Plain text")
+        }
+    }
 }
 
 enum SlashCommandCatalog {
     static let all: [SlashCommand] = [
-        .init(title: "Heading 1", subtitle: "Large section title", syntax: "#", kind: .heading(level: 1)),
-        .init(title: "Heading 2", subtitle: "Medium section title", syntax: "##", kind: .heading(level: 2)),
-        .init(title: "Heading 3", subtitle: "Small section title", syntax: "###", kind: .heading(level: 3)),
-        .init(title: "Heading 4", subtitle: "Compact section title", syntax: "####", kind: .heading(level: 4)),
-        .init(title: "Bulleted list", subtitle: "Create a bulleted list", syntax: "-", kind: .bullet),
-        .init(title: "Numbered list", subtitle: "Create an ordered list", syntax: "1.", kind: .numbered),
-        .init(title: "To-do list", subtitle: "Track a task with a checkbox", syntax: "[ ]", kind: .todo(checked: false)),
+        .init(syntax: "#", kind: .heading(level: 1)),
+        .init(syntax: "##", kind: .heading(level: 2)),
+        .init(syntax: "###", kind: .heading(level: 3)),
+        .init(syntax: "####", kind: .heading(level: 4)),
+        .init(syntax: "-", kind: .bullet),
+        .init(syntax: "1.", kind: .numbered),
+        .init(syntax: "[ ]", kind: .todo(checked: false)),
     ]
 }
 

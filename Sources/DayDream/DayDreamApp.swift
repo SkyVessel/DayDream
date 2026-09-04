@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // 应用设置中的外观模式（跟随系统 / 浅色 / 深色）。
+        EditorSettings.shared.applyAppearance()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

@@ -1,5 +1,15 @@
 import AppKit
 
+/// 行内样式颜色预设。高亮与文字颜色遵循「低饱和度 + 低亮度」规则。
+enum StyleColorPreset: String, CaseIterable, Sendable {
+    /// 跟随光标色系（亮色 = 浅蓝系，暗黑 = 浅粉系）。
+    case caret
+    case yellow
+    case green
+    case blue
+    case pink
+}
+
 /// DayDream 设计令牌：所有颜色遵循低饱和度规则。
 enum DayDreamTheme {
 
@@ -24,12 +34,28 @@ enum DayDreamTheme {
     static let darkSelection = NSColor(srgbRed: 0.945, green: 0.745, blue: 0.788, alpha: 0.24)
 
     // MARK: - 字体排印
-    /// 默认使用苹果系统字体（SF）。
-    static let font = NSFont.systemFont(ofSize: 19, weight: .regular)
+    /// 基础字号。
+    static let baseFontSize: CGFloat = 19
+    /// 编辑器字体：跟随设置页选择，默认苹果系统字体（SF）。
+    static var font: NSFont { EditorSettings.shared.editorFont }
     /// 词距较宽。
     static let letterSpacing: CGFloat = 0.8
     /// 行高倍数，留出呼吸感。
     static let lineHeightMultiple: CGFloat = 1.55
+
+    /// 按字族 + 字号 + 字重构建字体。
+    static func scaledFont(pointSize: CGFloat, weight: NSFont.Weight) -> NSFont {
+        let base = EditorSettings.shared.editorFont
+        guard weight != .regular else {
+            return NSFont(descriptor: base.fontDescriptor, size: pointSize)
+                ?? .systemFont(ofSize: pointSize, weight: .regular)
+        }
+        let descriptor = base.fontDescriptor.addingAttributes([
+            .traits: [NSFontDescriptor.TraitKey.weight: NSNumber(value: Double(weight.rawValue))]
+        ])
+        return NSFont(descriptor: descriptor, size: pointSize)
+            ?? .systemFont(ofSize: pointSize, weight: weight)
+    }
 
     // MARK: - 查询
 
@@ -53,6 +79,8 @@ enum DayDreamTheme {
         isDark(appearance) ? darkSelection : lightSelection
     }
 
+    // MARK: - 段落基础属性
+
     static func textAttributes(
         for appearance: NSAppearance,
         scale: CGFloat = 1,
@@ -64,7 +92,7 @@ enum DayDreamTheme {
 
         switch blockKind {
         case .body, .bullet, .numbered, .todo:
-            pointSize = font.pointSize
+            pointSize = baseFontSize
             weight = .regular
             // 行距：两行之间的距离，由设置页调整。
             paragraph.lineHeightMultiple = EditorSettings.shared.lineHeightMultiple
@@ -90,10 +118,90 @@ enum DayDreamTheme {
         }
 
         return [
-            .font: NSFont.systemFont(ofSize: pointSize * scale, weight: weight),
+            .font: scaledFont(pointSize: pointSize * scale, weight: weight),
             .foregroundColor: foreground,
             .kern: letterSpacing * scale,
             .paragraphStyle: paragraph,
         ]
+    }
+
+    // MARK: - 行内样式（粗体 / 斜体 / 高亮 / 文字颜色）
+
+    /// 在段落基础属性上叠加行内样式的视觉表现。
+    /// 自定义语义键（.dayDreamBold 等）同时写入，供序列化与主题重建使用。
+    static func inlineStyledAttributes(
+        base: [NSAttributedString.Key: Any],
+        bold: Bool,
+        italic: Bool,
+        textColorName: String?,
+        highlightName: String?,
+        for appearance: NSAppearance
+    ) -> [NSAttributedString.Key: Any] {
+        var attributes = base
+        var font = base[.font] as? NSFont ?? EditorSettings.shared.editorFont
+        let manager = NSFontManager.shared
+        if bold { font = manager.convert(font, toHaveTrait: .boldFontMask) }
+        if italic { font = manager.convert(font, toHaveTrait: .italicFontMask) }
+        attributes[.font] = font
+
+        if bold { attributes[.dayDreamBold] = true }
+        if italic { attributes[.dayDreamItalic] = true }
+        if let textColorName {
+            attributes[.foregroundColor] = inlineTextColor(textColorName, for: appearance)
+            attributes[.dayDreamTextColor] = textColorName
+        }
+        if let highlightName {
+            attributes[.backgroundColor] = inlineHighlightColor(highlightName, for: appearance)
+            attributes[.dayDreamHighlight] = highlightName
+        }
+        return attributes
+    }
+
+    /// 文字颜色：低饱和度，按模式调整亮度保证可读。
+    static func inlineTextColor(_ preset: String, for appearance: NSAppearance) -> NSColor {
+        let dark = isDark(appearance)
+        switch StyleColorPreset(rawValue: preset) ?? .caret {
+        case .caret, .blue:
+            return dark
+                ? NSColor(srgbRed: 0.494, green: 0.592, blue: 0.682, alpha: 1) // #7E97AE
+                : NSColor(srgbRed: 0.357, green: 0.498, blue: 0.651, alpha: 1) // #5B7FA6
+        case .yellow:
+            return dark
+                ? NSColor(srgbRed: 0.639, green: 0.576, blue: 0.369, alpha: 1) // #A3935E
+                : NSColor(srgbRed: 0.541, green: 0.478, blue: 0.282, alpha: 1) // #8A7A48
+        case .green:
+            return dark
+                ? NSColor(srgbRed: 0.478, green: 0.604, blue: 0.518, alpha: 1) // #7A9A84
+                : NSColor(srgbRed: 0.373, green: 0.498, blue: 0.408, alpha: 1) // #5F7F68
+        case .pink:
+            return dark
+                ? NSColor(srgbRed: 0.769, green: 0.557, blue: 0.612, alpha: 1) // #C48E9C
+                : NSColor(srgbRed: 0.604, green: 0.431, blue: 0.431, alpha: 1) // #9A6E6E
+        }
+    }
+
+    /// 高亮颜色：低饱和度 + 低亮度，带透明度铺底，文字保持可读。
+    static func inlineHighlightColor(_ preset: String, for appearance: NSAppearance) -> NSColor {
+        let dark = isDark(appearance)
+        let color: NSColor
+        switch StyleColorPreset(rawValue: preset) ?? .caret {
+        case .caret, .blue:
+            color = dark
+                ? NSColor(srgbRed: 0.369, green: 0.443, blue: 0.514, alpha: 1) // #5E7183
+                : NSColor(srgbRed: 0.478, green: 0.576, blue: 0.678, alpha: 1) // #7A93AD
+        case .yellow:
+            color = dark
+                ? NSColor(srgbRed: 0.486, green: 0.443, blue: 0.282, alpha: 1) // #7C7148
+                : NSColor(srgbRed: 0.639, green: 0.580, blue: 0.408, alpha: 1) // #A39468
+        case .green:
+            color = dark
+                ? NSColor(srgbRed: 0.369, green: 0.478, blue: 0.400, alpha: 1) // #5E7A66
+                : NSColor(srgbRed: 0.498, green: 0.627, blue: 0.541, alpha: 1) // #7FA08A
+        case .pink:
+            color = dark
+                ? NSColor(srgbRed: 0.588, green: 0.400, blue: 0.435, alpha: 1) // #96666F
+                : NSColor(srgbRed: 0.659, green: 0.506, blue: 0.506, alpha: 1) // #A88181
+        }
+        return color.withAlphaComponent(0.32)
     }
 }

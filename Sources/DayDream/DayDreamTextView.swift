@@ -90,6 +90,12 @@ final class DayDreamTextView: NSTextView {
             NotificationCenter.default.addObserver(
                 self, selector: #selector(windowKeyChanged),
                 name: NSWindow.didResignKeyNotification, object: window)
+            // 滚动时隐藏样式工具条。
+            enclosingScrollView?.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(clipBoundsChanged),
+                name: NSView.boundsDidChangeNotification,
+                object: enclosingScrollView?.contentView)
         }
     }
 
@@ -133,8 +139,142 @@ final class DayDreamTextView: NSTextView {
             }
             storage.endEditing()
         }
+        // 行内样式视觉（加粗/斜体/颜色）与空格宽度在基础属性之上重建。
+        if let storage = textStorage, storage.length > 0 {
+            let full = NSRange(location: 0, length: storage.length)
+            refreshInlineVisuals(in: full)
+            applySpaceWidth(in: full)
+        }
         updateTypingAttributesForSelection()
         needsDisplay = true
+    }
+
+    // MARK: - 行内样式与空格宽度
+
+    /// 根据保留的语义键（.dayDreamBold 等）重建行内样式的视觉表现。
+    /// 先收集再应用，避免在枚举过程中修改属性。
+    private func refreshInlineVisuals(in range: NSRange) {
+        guard let storage = textStorage, range.length > 0 else { return }
+        let appearance = effectiveAppearance
+        var styled: [(range: NSRange, style: InlineStyle, kind: MarkdownBlockKind)] = []
+        storage.enumerateAttributes(in: range, options: []) { attributes, subrange, _ in
+            let style = InlineStyle(
+                bold: attributes[.dayDreamBold] as? Bool ?? false,
+                italic: attributes[.dayDreamItalic] as? Bool ?? false,
+                textColor: attributes[.dayDreamTextColor] as? String,
+                highlight: attributes[.dayDreamHighlight] as? String
+            )
+            guard !style.isPlain else { return }
+            let kind = attributes[.dayDreamBlockKind] as? MarkdownBlockKind ?? .body
+            styled.append((subrange, style, kind))
+        }
+        for item in styled {
+            let base = DayDreamTheme.textAttributes(
+                for: appearance, scale: zoomScale, blockKind: item.kind
+            )
+            storage.addAttributes(
+                DayDreamTheme.inlineStyledAttributes(
+                    base: base,
+                    bold: item.style.bold,
+                    italic: item.style.italic,
+                    textColorName: item.style.textColor,
+                    highlightName: item.style.highlight,
+                    for: appearance
+                ),
+                range: item.range
+            )
+        }
+    }
+
+    /// 空格宽度：在基础词距之上为空格字符额外加宽（设置页可调）。
+    private func applySpaceWidth(in range: NSRange) {
+        guard let storage = textStorage, range.length > 0 else { return }
+        let extra = EditorSettings.shared.spaceWidth * zoomScale
+        guard extra > 0 else { return }
+        let widened = DayDreamTheme.letterSpacing * zoomScale + extra
+        let value = storage.string as NSString
+        storage.beginEditing()
+        for index in range.location..<NSMaxRange(range) {
+            if value.character(at: index) == 32 { // 空格
+                storage.addAttribute(.kern, value: widened, range: NSRange(location: index, length: 1))
+            }
+        }
+        storage.endEditing()
+    }
+
+    /// 重建指定范围的段落基础属性 + 行内样式 + 空格宽度（工具条改动后调用）。
+    private func rebuildAttributes(in range: NSRange) {
+        guard let storage = textStorage, storage.length > 0 else { return }
+        let value = storage.string as NSString
+        let paragraphRange = value.paragraphRange(for: range)
+        let kind = currentBlockKind(at: paragraphRange.location)
+        storage.addAttributes(
+            DayDreamTheme.textAttributes(for: effectiveAppearance, scale: zoomScale, blockKind: kind),
+            range: paragraphRange
+        )
+        storage.addAttribute(.dayDreamBlockKind, value: kind, range: paragraphRange)
+        refreshInlineVisuals(in: paragraphRange)
+        applySpaceWidth(in: paragraphRange)
+        needsDisplay = true
+    }
+
+    // MARK: - 悬浮样式工具条
+
+    private lazy var formatPanel = FormatPanel()
+
+    func toggleBold() { toggleInlineFlag(.dayDreamBold) }
+    func toggleItalic() { toggleInlineFlag(.dayDreamItalic) }
+    func toggleHighlight() {
+        toggleInlineValue(.dayDreamHighlight, value: EditorSettings.shared.highlightPreset)
+    }
+    func toggleTextColor() {
+        toggleInlineValue(.dayDreamTextColor, value: EditorSettings.shared.textColorPreset)
+    }
+
+    private func toggleInlineFlag(_ key: NSAttributedString.Key) {
+        guard let storage = textStorage, selectedRange.length > 0 else { return }
+        let current = storage.attribute(key, at: selectedRange.location, effectiveRange: nil) as? Bool ?? false
+        if current {
+            storage.removeAttribute(key, range: selectedRange)
+        } else {
+            storage.addAttribute(key, value: true, range: selectedRange)
+        }
+        afterInlineStyleChange()
+    }
+
+    private func toggleInlineValue(_ key: NSAttributedString.Key, value: String) {
+        guard let storage = textStorage, selectedRange.length > 0 else { return }
+        let current = storage.attribute(key, at: selectedRange.location, effectiveRange: nil) as? String
+        if current == value {
+            storage.removeAttribute(key, range: selectedRange)
+        } else {
+            storage.addAttribute(key, value: value, range: selectedRange)
+        }
+        afterInlineStyleChange()
+    }
+
+    private func afterInlineStyleChange() {
+        rebuildAttributes(in: selectedRange)
+        notifyMarkdownChange()
+    }
+
+    private func showFormatPanel() {
+        guard selectedRange.length > 0, window != nil else { return }
+        let rect = firstRect(forCharacterRange: selectedRange, actualRange: nil)
+        guard !rect.isNull, rect.size.height > 0 else { return }
+        formatPanel.onAction = { [weak self] action in
+            switch action {
+            case .bold: self?.toggleBold()
+            case .italic: self?.toggleItalic()
+            case .highlight: self?.toggleHighlight()
+            case .textColor: self?.toggleTextColor()
+            }
+        }
+        formatPanel.show(above: rect)
+    }
+
+    private func hideFormatPanel() {
+        formatPanel.hide()
     }
 
     func load(markdown: String) {
@@ -147,6 +287,9 @@ final class DayDreamTextView: NSTextView {
             scale: zoomScale
         )
         textStorage?.setAttributedString(value)
+        if let storage = textStorage, storage.length > 0 {
+            applySpaceWidth(in: NSRange(location: 0, length: storage.length))
+        }
         setSelectedRange(NSRange(location: value.length, length: 0))
         let lastKind = document.blocks.last?.kind ?? .body
         setTypingAttributes(for: lastKind)
@@ -716,7 +859,8 @@ final class DayDreamTextView: NSTextView {
         guard value.substring(with: range).trimmingCharacters(in: .newlines).isEmpty else {
             return nil
         }
-        return "Heading \(min(max(level, 1), 4))"
+        let clamped = min(max(level, 1), 4)
+        return L10n.t("标题 \(clamped)", "Heading \(clamped)")
     }
 
     private func drawHeadingPlaceholder(in dirtyRect: NSRect) {
@@ -801,6 +945,7 @@ final class DayDreamTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         closeSlashCommandMenu()
+        hideFormatPanel()
         let point = convert(event.locationInWindow, from: nil)
         if toggleTodo(at: point) { return }
         super.mouseDown(with: event)
@@ -811,6 +956,18 @@ final class DayDreamTextView: NSTextView {
     override func didChangeText() {
         super.didChangeText()
         notifyMarkdownChange()
+        hideFormatPanel()
+        // 新输入/粘贴的内容里，空格需要补上加宽的词距。
+        let value = string as NSString
+        if let editRange = textStorage?.editedRange,
+           editRange.location != NSNotFound,
+           editRange.location <= value.length {
+            let safeRange = NSRange(
+                location: editRange.location,
+                length: min(editRange.length, value.length - editRange.location)
+            )
+            applySpaceWidth(in: value.paragraphRange(for: safeRange))
+        }
         updateCaret(animated: true)
     }
 
@@ -820,6 +977,12 @@ final class DayDreamTextView: NSTextView {
         super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelectingFlag)
         updateTypingAttributesForSelection()
         updateCaret(animated: !stillSelectingFlag)
+        // 拖选完成后浮现样式工具条；开始拖选或取消选区时隐藏。
+        if stillSelectingFlag || selectedRange.length == 0 {
+            hideFormatPanel()
+        } else {
+            showFormatPanel()
+        }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -852,12 +1015,18 @@ final class DayDreamTextView: NSTextView {
     @objc private func windowKeyChanged() {
         if window?.isKeyWindow != true {
             closeSlashCommandMenu()
+            hideFormatPanel()
         }
         updateCaret(animated: true)
     }
 
+    @objc private func clipBoundsChanged() {
+        hideFormatPanel()
+    }
+
     deinit {
         slashPanel.closePanel()
+        formatPanel.hide()
         stopAnimation()
         NotificationCenter.default.removeObserver(self)
     }

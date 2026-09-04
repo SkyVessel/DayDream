@@ -151,6 +151,10 @@ final class BlockDecorationLayoutTests: XCTestCase {
     }
 
     func testEmptyHeadingReturnsMutedPlaceholderLabel() {
+        let savedLanguage = EditorSettings.shared.language
+        EditorSettings.shared.language = .en
+        defer { EditorSettings.shared.language = savedLanguage }
+
         let textView = makeTextView()
         textView.load(markdown: "### ")
 
