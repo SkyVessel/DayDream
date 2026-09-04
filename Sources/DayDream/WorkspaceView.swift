@@ -102,7 +102,7 @@ struct WorkspaceView: View {
     }
 
     private var sidebarToggleVerticalOffset: CGFloat {
-        isSidebarVisible || isFullScreen ? 0 : -28
+        isSidebarVisible || isFullScreen ? 0 : -33 // 收起时与红绿灯对齐；展开时保持原位
     }
 
     private func flushSave() {
