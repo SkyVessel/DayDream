@@ -441,6 +441,58 @@ final class DayDreamTextView: NSTextView {
         return selectedRange.location == paragraphRange.location
     }
 
+    // MARK: - Cmd+Backspace 连续向上删行
+
+    /// 原生 deleteToBeginningOfLine 在行首时是空操作（不删换行符），
+    /// 导致空行上第二次 Cmd+Backspace 卡住。这里在行首时退化为普通退格，
+    /// 删掉上一行的换行符，让连续 Cmd+Backspace 可以一路向上吃行。
+    override func deleteToBeginningOfLine(_ sender: Any?) {
+        guard !hasMarkedText(), selectedRange.length == 0 else {
+            super.deleteToBeginningOfLine(sender)
+            return
+        }
+        if isAtBeginningOfVisualLine {
+            deleteBackward(sender)
+        } else {
+            super.deleteToBeginningOfLine(sender)
+        }
+    }
+
+    override func deleteToBeginningOfParagraph(_ sender: Any?) {
+        guard !hasMarkedText(), selectedRange.length == 0 else {
+            super.deleteToBeginningOfParagraph(sender)
+            return
+        }
+        if isAtStartOfCurrentParagraph {
+            deleteBackward(sender)
+        } else {
+            super.deleteToBeginningOfParagraph(sender)
+        }
+    }
+
+    /// 光标是否位于视觉行行首（含文末换行后的幻影行）。
+    private var isAtBeginningOfVisualLine: Bool {
+        guard let storage = textStorage, storage.length > 0 else { return true }
+        let location = selectedRange.location
+
+        // 文末幻影行（字符串以换行结尾、光标在末尾）：必然是新行行首。
+        if location >= storage.length, storage.string.last?.isNewline == true {
+            return true
+        }
+
+        guard let layoutManager, let textContainer else {
+            return isAtStartOfCurrentParagraph
+        }
+        layoutManager.ensureLayout(for: textContainer)
+        let glyphIndex = layoutManager.glyphIndexForCharacter(
+            at: min(location, storage.length - 1)
+        )
+        var lineGlyphRange = NSRange()
+        layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineGlyphRange)
+        let lineStart = layoutManager.characterIndexForGlyph(at: lineGlyphRange.location)
+        return location <= lineStart
+    }
+
     private func changeZoom(by delta: CGFloat) {
         let steppedScale = ((zoomScale + delta) * 10).rounded() / 10
         let newScale = min(max(steppedScale, minimumZoomScale), maximumZoomScale)
