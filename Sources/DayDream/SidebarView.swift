@@ -31,6 +31,11 @@ struct SidebarView: View {
     @State private var editingURL: URL?
     @State private var draftName = ""
     @State private var isAddMenuPresented = false
+    @State private var hoveredURL: URL?
+    /// 哪一行文件夹的「+」弹窗处于打开状态。
+    @State private var folderAddMenuURL: URL?
+    /// 拖拽悬停高亮的目标行。
+    @State private var dropTargetURL: URL?
     @FocusState private var focusedEditingURL: URL?
 
     private var rows: [SidebarRow] {
@@ -51,6 +56,10 @@ struct SidebarView: View {
                 }
                 .padding(.horizontal, 9)
                 .padding(.bottom, 14)
+            }
+            .dropDestination(for: URL.self) { items, _ in
+                guard let source = items.first else { return false }
+                return performDropToRoot(source)
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
@@ -232,6 +241,27 @@ struct SidebarView: View {
                         beginRename(row.node.url, currentName: row.node.name)
                     }
                 )
+
+                // 文件夹行悬停时出现「+」：在内部新建笔记或文件夹（可无限嵌套）。
+                if row.node.kind == .folder, hoveredURL == row.node.url {
+                    Button {
+                        folderAddMenuURL = row.node.url
+                    } label: {
+                        DayDreamIcon(name: .plus, color: .secondary)
+                            .frame(width: 13, height: 13)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add a note or folder inside")
+                    .accessibilityLabel("Add inside \(row.node.name)")
+                    .popover(
+                        isPresented: folderAddMenuBinding(for: row.node.url),
+                        arrowEdge: .trailing
+                    ) {
+                        folderAddMenu(for: row.node.url)
+                    }
+                }
             }
         }
         .padding(.leading, CGFloat(row.depth) * 17)
@@ -239,9 +269,24 @@ struct SidebarView: View {
         .frame(height: 31)
         .background {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(store.selectedURL == row.node.url ? Color.primary.opacity(0.075) : .clear)
+                .fill(rowBackgroundFill(for: row.node.url))
         }
         .contentShape(Rectangle())
+        .onHover { hovering in
+            hoveredURL = hovering ? row.node.url : (hoveredURL == row.node.url ? nil : hoveredURL)
+        }
+        .contextMenu { rowContextMenu(for: row.node) }
+        .draggableIf(editingURL != row.node.url, payload: row.node.url)
+        .dropDestination(for: URL.self) { items, _ in
+            guard let source = items.first else { return false }
+            return performDrop(source, onto: row.node)
+        } isTargeted: { targeted in
+            if targeted {
+                dropTargetURL = row.node.url
+            } else if dropTargetURL == row.node.url {
+                dropTargetURL = nil
+            }
+        }
     }
 
     private func rowIcon(_ node: WorkspaceNode) -> some View {
@@ -262,9 +307,13 @@ struct SidebarView: View {
     }
 
     private func createNote() {
+        createNote(in: store.parentForNewNode())
+    }
+
+    private func createNote(in parent: URL?) {
         isAddMenuPresented = false
+        folderAddMenuURL = nil
         do {
-            let parent = store.parentForNewNode()
             let url = try store.createNote(in: parent)
             if let parent, parent.path != store.rootURL.path {
                 expandedFolders.insert(parent)
@@ -277,9 +326,13 @@ struct SidebarView: View {
     }
 
     private func createFolder() {
+        createFolder(in: store.parentForNewNode())
+    }
+
+    private func createFolder(in parent: URL?) {
         isAddMenuPresented = false
+        folderAddMenuURL = nil
         do {
-            let parent = store.parentForNewNode()
             let url = try store.createFolder(in: parent)
             if let parent, parent.path != store.rootURL.path {
                 expandedFolders.insert(parent)
@@ -317,6 +370,103 @@ struct SidebarView: View {
         focusedEditingURL = nil
     }
 
+    // MARK: - 行悬停「+」弹窗
+
+    private func folderAddMenuBinding(for url: URL) -> Binding<Bool> {
+        Binding(
+            get: { folderAddMenuURL == url },
+            set: { if !$0 { folderAddMenuURL = nil } }
+        )
+    }
+
+    private func folderAddMenu(for folder: URL) -> some View {
+        VStack(spacing: 2) {
+            addMenuButton(title: "New Note", icon: .fileText) { createNote(in: folder) }
+            addMenuButton(title: "New Folder", icon: .folder) { createFolder(in: folder) }
+        }
+        .padding(6)
+        .frame(width: 176)
+    }
+
+    // MARK: - 右键菜单
+
+    @ViewBuilder
+    private func rowContextMenu(for node: WorkspaceNode) -> some View {
+        if node.kind == .folder {
+            Button("New Note") { createNote(in: node.url) }
+            Button("New Folder") { createFolder(in: node.url) }
+            Divider()
+        }
+        Button("Rename…") {
+            beginRename(node.url, currentName: node.name)
+        }
+        Button("Reveal in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([node.url])
+        }
+        Divider()
+        Button("Move to Trash", role: .destructive) {
+            deleteNode(node)
+        }
+    }
+
+    private func deleteNode(_ node: WorkspaceNode) {
+        do {
+            expandedFolders.remove(node.url)
+            try store.delete(node.url)
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - 拖拽转移
+
+    private func rowBackgroundFill(for url: URL) -> Color {
+        if dropTargetURL == url { return Color.primary.opacity(0.14) }
+        if store.selectedURL == url { return Color.primary.opacity(0.075) }
+        return .clear
+    }
+
+    /// 把拖拽物放到某一行上：文件夹行 = 放入其中；笔记行 = 放入它所在的文件夹。
+    private func performDrop(_ source: URL, onto target: WorkspaceNode) -> Bool {
+        let destinationFolder = (target.kind == .folder
+            ? target.url
+            : target.url.deletingLastPathComponent()).standardizedFileURL
+        return performDrop(source, toFolder: destinationFolder, expandOnSuccess: target.kind == .folder ? target.url : nil)
+    }
+
+    /// 把拖拽物放到空白区域：移回库根目录。
+    private func performDropToRoot(_ source: URL) -> Bool {
+        performDrop(source, toFolder: nil, expandOnSuccess: nil)
+    }
+
+    private func performDrop(_ source: URL, toFolder folder: URL?, expandOnSuccess: URL?) -> Bool {
+        let standardized = source.standardizedFileURL
+        // 只接受库内部的拖拽；来自 Finder 的外部文件直接拒绝。
+        guard standardized.path.hasPrefix(store.rootURL.path + "/") else { return false }
+
+        let destination = (folder ?? store.rootURL).standardizedFileURL
+        // 拖到自身 / 自己的后代 / 原地不动：拒绝（动画弹回）。
+        guard destination.path != standardized.path,
+              !destination.path.hasPrefix(standardized.path + "/"),
+              standardized.deletingLastPathComponent().standardizedFileURL != destination else {
+            return false
+        }
+
+        do {
+            let moved = try store.move(standardized, toFolder: folder)
+            if let expandOnSuccess { expandedFolders.insert(expandOnSuccess) }
+            // 被拖动的文件夹如果处于展开状态，跟随新路径。
+            if expandedFolders.contains(standardized) {
+                expandedFolders.remove(standardized)
+                expandedFolders.insert(moved)
+            }
+            return true
+        } catch {
+            store.errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     private func chooseRepository() {
         let panel = NSOpenPanel()
         panel.title = "Choose a DayDream Repository"
@@ -341,5 +491,17 @@ struct SidebarView: View {
         expandedFolders = []
         editingURL = nil
         focusedEditingURL = nil
+    }
+}
+
+private extension View {
+    /// 重命名编辑期间禁用拖拽，避免与文本选择手势冲突。
+    @ViewBuilder
+    func draggableIf(_ condition: Bool, payload: URL) -> some View {
+        if condition {
+            draggable(payload)
+        } else {
+            self
+        }
     }
 }

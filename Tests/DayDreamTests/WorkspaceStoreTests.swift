@@ -141,6 +141,72 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertEqual(restored.rootURL, second.standardizedFileURL)
     }
 
+    func testMoveNoteIntoFolderUpdatesTree() throws {
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        try store.reload()
+        let folder = try store.createFolder(in: nil)
+        let note = try store.createNote(in: nil)
+
+        let moved = try store.move(note, toFolder: folder)
+
+        XCTAssertEqual(moved.deletingLastPathComponent().standardizedFileURL, folder.standardizedFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: moved.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: note.path))
+        XCTAssertEqual(store.nodes.first?.children.map(\.url), [moved])
+    }
+
+    func testMoveFolderIntoOwnDescendantThrows() throws {
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        try store.reload()
+        let parent = try store.createFolder(in: nil)
+        let child = try store.createFolder(in: parent)
+
+        XCTAssertThrowsError(try store.move(parent, toFolder: child)) { error in
+            XCTAssertEqual(error as? WorkspaceStoreError, .cannotMoveIntoItself)
+        }
+    }
+
+    func testMoveToSameParentIsNoOp() throws {
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        try store.reload()
+        let folder = try store.createFolder(in: nil)
+        let note = try store.createNote(in: folder)
+
+        let moved = try store.move(note, toFolder: folder)
+        XCTAssertEqual(moved.standardizedFileURL, note.standardizedFileURL)
+    }
+
+    func testMoveFolderUpdatesSelectedNoteInsideIt() throws {
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        try store.reload()
+        let folderA = try store.createFolder(in: nil)
+        let folderB = try store.createFolder(in: nil)
+        let note = try store.createNote(in: folderA)
+        try store.select(note)
+
+        let movedFolder = try store.move(folderA, toFolder: folderB)
+
+        XCTAssertEqual(
+            store.selectedURL,
+            movedFolder.appending(path: note.lastPathComponent).standardizedFileURL
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.selectedURL!.path))
+    }
+
+    func testDeleteTrashesNoteAndClearsSelection() throws {
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        try store.reload()
+        let note = try store.createNote(in: nil)
+        try store.select(note)
+
+        try store.delete(note)
+
+        XCTAssertNil(store.selectedURL)
+        XCTAssertEqual(store.currentMarkdown, "")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: note.path))
+        XCTAssertTrue(store.nodes.isEmpty)
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

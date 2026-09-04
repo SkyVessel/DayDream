@@ -149,6 +149,60 @@ final class WorkspaceStore: ObservableObject {
         try reload()
         return destination
     }
+    /// 拖拽移动：把笔记或文件夹转移到目标文件夹（nil = 库根目录）。
+    /// 返回移动后的新 URL。
+    @discardableResult
+    func move(_ url: URL, toFolder targetFolder: URL?) throws -> URL {
+        try flushPendingSave()
+        let source = url.standardizedFileURL
+        let destinationFolder = try validatedDirectory(targetFolder)
+
+        // 不能移动到自身内部（文件夹拖进自己或自己的后代）。
+        if destinationFolder.path == source.path
+            || destinationFolder.path.hasPrefix(source.path + "/") {
+            throw WorkspaceStoreError.cannotMoveIntoItself
+        }
+
+        // 父目录没变：无事发生。
+        let currentParent = source.deletingLastPathComponent().standardizedFileURL
+        guard currentParent != destinationFolder else { return source }
+
+        let destination = destinationFolder.appending(path: source.lastPathComponent)
+        if fileManager.fileExists(atPath: destination.path) {
+            throw WorkspaceStoreError.nameAlreadyExists
+        }
+        try fileManager.moveItem(at: source, to: destination)
+
+        // 同步选中项路径（选中的笔记被移动，或它所在的文件夹被移动）。
+        if let selected = selectedURL {
+            if selected == source {
+                selectedURL = destination
+            } else if selected.path.hasPrefix(source.path + "/") {
+                let relative = String(selected.path.dropFirst(source.path.count + 1))
+                selectedURL = destination.appending(path: relative)
+            }
+        }
+        try reload()
+        return destination
+    }
+
+    /// 删除（移到废纸篓，可恢复）。
+    func delete(_ url: URL) throws {
+        try flushPendingSave()
+        let source = url.standardizedFileURL
+        guard source.path.hasPrefix(rootURL.path + "/") else {
+            throw WorkspaceStoreError.outsideLibrary
+        }
+        try fileManager.trashItem(at: source, resultingItemURL: nil)
+
+        // 选中的笔记被删除（或所在文件夹被删除）：清空编辑器。
+        if let selected = selectedURL,
+           selected == source || selected.path.hasPrefix(source.path + "/") {
+            selectedURL = nil
+            currentMarkdown = ""
+        }
+        try reload()
+    }
 
     func select(_ url: URL?) throws {
         try flushPendingSave()
@@ -293,6 +347,7 @@ enum WorkspaceStoreError: LocalizedError {
     case nameAlreadyExists
     case outsideLibrary
     case folderUnavailable
+    case cannotMoveIntoItself
 
     var errorDescription: String? {
         switch self {
@@ -300,6 +355,7 @@ enum WorkspaceStoreError: LocalizedError {
         case .nameAlreadyExists: return "An item with that name already exists."
         case .outsideLibrary: return "That location is outside the DayDream library."
         case .folderUnavailable: return "The selected folder is unavailable."
+        case .cannotMoveIntoItself: return "A folder cannot be moved into itself."
         }
     }
 }
