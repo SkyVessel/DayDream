@@ -12,7 +12,7 @@ final class WorkspaceStoreTests: XCTestCase {
         try "ignore".write(to: root.appending(path: "ignore.txt"), atomically: true, encoding: .utf8)
         try "Body".write(to: root.appending(path: "Root.md"), atomically: true, encoding: .utf8)
 
-        let store = WorkspaceStore(rootURL: root, autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: root)
         try store.reload()
 
         XCTAssertEqual(store.nodes.map(\.name), ["Folder", "Root"])
@@ -22,7 +22,7 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testNewNodesUseSelectedFolderAndUniqueNames() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
 
         let folder = try store.createFolder(in: nil)
@@ -35,44 +35,17 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
     }
 
-    func testSelectingAnotherNoteFlushesCurrentMarkdown() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 60)
-        try store.reload()
-        let first = try store.createNote(in: nil)
-        let second = try store.createNote(in: nil)
-
-        try store.select(first)
-        store.updateCurrentMarkdown("# Saved")
-        try store.select(second)
-
-        XCTAssertEqual(try String(contentsOf: first, encoding: .utf8), "# Saved")
-        XCTAssertEqual(store.selectedURL, second)
-        XCTAssertEqual(store.currentMarkdown, "")
-    }
-
     func testRenameSanitizesSeparatorsAndUpdatesSelection() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
         let note = try store.createNote(in: nil)
-        try store.select(note)
+        store.select(note)
 
         let renamed = try store.rename(note, to: "  My/Note:Draft  ")
 
         XCTAssertEqual(renamed.lastPathComponent, "My-Note-Draft.md")
         XCTAssertEqual(store.selectedURL, renamed)
         XCTAssertTrue(FileManager.default.fileExists(atPath: renamed.path))
-    }
-
-    func testExplicitFlushWritesLatestMarkdownAtomically() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 60)
-        try store.reload()
-        let note = try store.createNote(in: nil)
-        try store.select(note)
-
-        store.updateCurrentMarkdown("- [ ] Ship")
-        try store.flushPendingSave()
-
-        XCTAssertEqual(try String(contentsOf: note, encoding: .utf8), "- [ ] Ship")
     }
 
     func testOpeningRepositoryAddsItSwitchesContentsAndCreatesThere() throws {
@@ -83,7 +56,7 @@ final class WorkspaceStoreTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
-        let store = WorkspaceStore(rootURL: first, autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: first)
 
         try store.openRepository(second)
         let created = try store.createNote(in: nil)
@@ -98,7 +71,7 @@ final class WorkspaceStoreTests: XCTestCase {
         let first = try makeTemporaryDirectory()
         let second = try makeTemporaryDirectory()
         let third = try makeTemporaryDirectory()
-        let store = WorkspaceStore(rootURL: first, autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: first)
         try store.openRepository(second)
         try store.openRepository(third)
 
@@ -126,15 +99,13 @@ final class WorkspaceStoreTests: XCTestCase {
 
         let original = WorkspaceStore(
             rootURL: first,
-            autosaveDelay: 0,
-            repositoryDefaults: defaults
+                        repositoryDefaults: defaults
         )
         try original.openRepository(second)
 
         let restored = WorkspaceStore(
             rootURL: first,
-            autosaveDelay: 0,
-            repositoryDefaults: defaults
+                        repositoryDefaults: defaults
         )
 
         XCTAssertEqual(restored.repositoryURLs, [first.standardizedFileURL, second.standardizedFileURL])
@@ -142,7 +113,7 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testMoveNoteIntoFolderUpdatesTree() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
         let folder = try store.createFolder(in: nil)
         let note = try store.createNote(in: nil)
@@ -156,7 +127,7 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testMoveFolderIntoOwnDescendantThrows() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
         let parent = try store.createFolder(in: nil)
         let child = try store.createFolder(in: parent)
@@ -167,7 +138,7 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testMoveToSameParentIsNoOp() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
         let folder = try store.createFolder(in: nil)
         let note = try store.createNote(in: folder)
@@ -177,12 +148,12 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testMoveFolderUpdatesSelectedNoteInsideIt() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
         let folderA = try store.createFolder(in: nil)
         let folderB = try store.createFolder(in: nil)
         let note = try store.createNote(in: folderA)
-        try store.select(note)
+        store.select(note)
 
         let movedFolder = try store.move(folderA, toFolder: folderB)
 
@@ -194,15 +165,14 @@ final class WorkspaceStoreTests: XCTestCase {
     }
 
     func testDeleteTrashesNoteAndClearsSelection() throws {
-        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory(), autosaveDelay: 0)
+        let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()
         let note = try store.createNote(in: nil)
-        try store.select(note)
+        store.select(note)
 
         try store.delete(note)
 
         XCTAssertNil(store.selectedURL)
-        XCTAssertEqual(store.currentMarkdown, "")
         XCTAssertFalse(FileManager.default.fileExists(atPath: note.path))
         XCTAssertTrue(store.nodes.isEmpty)
     }

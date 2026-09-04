@@ -7,17 +7,25 @@ struct EditorView: NSViewRepresentable {
     let documentURL: URL?
     let autofocus: Bool
     let onMarkdownChange: (String) -> Void
+    /// 编辑器获得键盘焦点时回调（用于窗格焦点跟踪 / 退出侧栏焦点）。
+    var onBecameFirstResponder: (() -> Void)?
+    /// 创建后把底层文本视图注册出去（用于 ⌘⌥←/→ 焦点切换）。
+    var registerTextView: ((DayDreamTextView) -> Void)?
 
     init(
         markdown: String = "",
         documentURL: URL? = nil,
         autofocus: Bool = true,
-        onMarkdownChange: @escaping (String) -> Void = { _ in }
+        onMarkdownChange: @escaping (String) -> Void = { _ in },
+        onBecameFirstResponder: (() -> Void)? = nil,
+        registerTextView: ((DayDreamTextView) -> Void)? = nil
     ) {
         self.markdown = markdown
         self.documentURL = documentURL
         self.autofocus = autofocus
         self.onMarkdownChange = onMarkdownChange
+        self.onBecameFirstResponder = onBecameFirstResponder
+        self.registerTextView = registerTextView
     }
 
     func makeCoordinator() -> Coordinator {
@@ -55,6 +63,8 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.loadedURL = documentURL
         context.coordinator.hasLoadedDocument = true
         context.coordinator.onMarkdownChange = onMarkdownChange
+        textView.onBecameFirstResponder = onBecameFirstResponder
+        registerTextView?(textView)
         textView.markdownDidChange = { [coordinator = context.coordinator] markdown in
             coordinator.onMarkdownChange(markdown)
         }
@@ -73,6 +83,7 @@ struct EditorView: NSViewRepresentable {
         scrollView.backgroundColor = DayDreamTheme.background(for: scrollView.effectiveAppearance)
         context.coordinator.onMarkdownChange = onMarkdownChange
         guard let textView = scrollView.documentView as? DayDreamTextView else { return }
+        textView.onBecameFirstResponder = onBecameFirstResponder
 
         if !context.coordinator.hasLoadedDocument
             || context.coordinator.loadedURL != documentURL {

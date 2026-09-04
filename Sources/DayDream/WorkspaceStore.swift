@@ -15,30 +15,31 @@ struct WorkspaceNode: Identifiable, Equatable, Hashable, Sendable {
     var name: String { url.deletingPathExtension().lastPathComponent }
 }
 
+/// 库结构管理：文件树、选中项、多笔记库。
+/// 文档内容的读写由 EditorPaneStore 负责（每个编辑器窗格各自落盘）。
 @MainActor
 final class WorkspaceStore: ObservableObject {
     @Published private(set) var nodes: [WorkspaceNode] = []
     @Published private(set) var selectedURL: URL?
     @Published private(set) var repositoryURLs: [URL]
     @Published private(set) var repositoryIndex: Int
-    @Published var currentMarkdown = ""
     @Published var errorMessage: String?
 
     var rootURL: URL { repositoryURLs[repositoryIndex] }
     var canSelectPreviousRepository: Bool { repositoryIndex > 0 }
     var canSelectNextRepository: Bool { repositoryIndex + 1 < repositoryURLs.count }
 
-    private let autosaveDelay: TimeInterval
+    /// 结构变更（重命名/移动/删除/粘贴）前调用——视图层用来先把各窗格落盘。
+    var beforeMutation: (() -> Void)?
+
     private let fileManager: FileManager
     private let repositoryDefaults: UserDefaults?
-    private var pendingSave: DispatchWorkItem?
 
     private static let repositoryPathsKey = "repositoryPaths"
     private static let selectedRepositoryPathKey = "selectedRepositoryPath"
 
     init(
         rootURL: URL = WorkspaceStore.defaultRootURL(),
-        autosaveDelay: TimeInterval = 0.35,
         fileManager: FileManager = .default,
         repositoryDefaults: UserDefaults? = nil
     ) {
@@ -59,7 +60,6 @@ final class WorkspaceStore: ObservableObject {
 
         self.repositoryURLs = repositories
         self.repositoryIndex = repositories.firstIndex { $0.path == selectedPath } ?? 0
-        self.autosaveDelay = autosaveDelay
         self.fileManager = fileManager
         self.repositoryDefaults = repositoryDefaults
         do {
@@ -90,9 +90,9 @@ final class WorkspaceStore: ObservableObject {
         if let existingIndex = repositoryURLs.firstIndex(of: repository) {
             try selectRepository(at: existingIndex)
         } else {
-            try flushPendingSave()
+            beforeMutation?()
             repositoryURLs.append(repository)
-            try selectRepository(at: repositoryURLs.count - 1, flushCurrent: false)
+            try selectRepository(at: repositoryURLs.count - 1)
         }
     }
 
@@ -124,7 +124,7 @@ final class WorkspaceStore: ObservableObject {
 
     @discardableResult
     func rename(_ url: URL, to proposedName: String) throws -> URL {
-        try flushPendingSave()
+        beforeMutation?()
         let source = url.standardizedFileURL
         let isNote = source.pathExtension.lowercased() == "md"
         let cleaned = sanitizedName(proposedName)
@@ -149,11 +149,17 @@ final class WorkspaceStore: ObservableObject {
         try reload()
         return destination
     }
+
+    /// 选中只影响侧栏高亮与「新建」的父目录推断，不涉及内容加载。
+    func select(_ url: URL?) {
+        selectedURL = url?.standardizedFileURL
+    }
+
     /// 拖拽移动：把笔记或文件夹转移到目标文件夹（nil = 库根目录）。
     /// 返回移动后的新 URL。
     @discardableResult
     func move(_ url: URL, toFolder targetFolder: URL?) throws -> URL {
-        try flushPendingSave()
+        beforeMutation?()
         let source = url.standardizedFileURL
         let destinationFolder = try validatedDirectory(targetFolder)
 
@@ -189,7 +195,7 @@ final class WorkspaceStore: ObservableObject {
     /// 复制（拷贝为新文件/新文件夹，名称自动加后缀唯一化）。
     @discardableResult
     func duplicate(_ url: URL) throws -> URL {
-        try flushPendingSave()
+        beforeMutation?()
         let source = url.standardizedFileURL
         guard source.path.hasPrefix(rootURL.path + "/") else {
             throw WorkspaceStoreError.outsideLibrary
@@ -208,67 +214,55 @@ final class WorkspaceStore: ObservableObject {
         return destination
     }
 
+    /// 粘贴（⌘V）：把剪贴板里的文件/文件夹拷贝进目标文件夹。
+    /// 库内部条目 = 复制；库外部条目 = 导入（仅限 .md 与文件夹）。
+    @discardableResult
+    func pasteItem(from source: URL, into targetFolder: URL?) throws -> URL {
+        beforeMutation?()
+        let destinationFolder = try validatedDirectory(targetFolder)
+        let src = source.standardizedFileURL
+
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: src.path, isDirectory: &isDirectory) else {
+            throw WorkspaceStoreError.folderUnavailable
+        }
+        guard isDirectory.boolValue || src.pathExtension.lowercased() == "md" else {
+            throw WorkspaceStoreError.unsupportedItem
+        }
+        // 目标不能在源内部（文件夹粘贴到自身或自己的后代）。
+        if destinationFolder.path == src.path
+            || destinationFolder.path.hasPrefix(src.path + "/") {
+            throw WorkspaceStoreError.cannotMoveIntoItself
+        }
+
+        let baseName = isDirectory.boolValue
+            ? src.lastPathComponent
+            : src.deletingPathExtension().lastPathComponent
+        let destination = uniqueURL(
+            in: destinationFolder,
+            baseName: baseName,
+            pathExtension: isDirectory.boolValue ? nil : "md"
+        )
+        try fileManager.copyItem(at: src, to: destination)
+        try reload()
+        return destination
+    }
+
     /// 删除（移到废纸篓，可恢复）。
     func delete(_ url: URL) throws {
-        try flushPendingSave()
+        beforeMutation?()
         let source = url.standardizedFileURL
         guard source.path.hasPrefix(rootURL.path + "/") else {
             throw WorkspaceStoreError.outsideLibrary
         }
         try fileManager.trashItem(at: source, resultingItemURL: nil)
 
-        // 选中的笔记被删除（或所在文件夹被删除）：清空编辑器。
+        // 选中的笔记被删除（或所在文件夹被删除）：取消选中。
         if let selected = selectedURL,
            selected == source || selected.path.hasPrefix(source.path + "/") {
             selectedURL = nil
-            currentMarkdown = ""
         }
         try reload()
-    }
-
-    func select(_ url: URL?) throws {
-        try flushPendingSave()
-        pendingSave?.cancel()
-        pendingSave = nil
-
-        guard let url else {
-            selectedURL = nil
-            currentMarkdown = ""
-            return
-        }
-
-        let selected = url.standardizedFileURL
-        selectedURL = selected
-        if selected.pathExtension.lowercased() == "md" {
-            currentMarkdown = try String(contentsOf: selected, encoding: .utf8)
-        } else {
-            currentMarkdown = ""
-        }
-    }
-
-    func updateCurrentMarkdown(_ markdown: String) {
-        currentMarkdown = markdown
-        pendingSave?.cancel()
-
-        guard selectedURL?.pathExtension.lowercased() == "md" else { return }
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            do {
-                try self.flushPendingSave()
-            } catch {
-                self.errorMessage = error.localizedDescription
-            }
-        }
-        pendingSave = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + autosaveDelay, execute: workItem)
-    }
-
-    func flushPendingSave() throws {
-        pendingSave?.cancel()
-        pendingSave = nil
-        guard let url = selectedURL,
-              url.pathExtension.lowercased() == "md" else { return }
-        try Data(currentMarkdown.utf8).write(to: url, options: .atomic)
     }
 
     func parentForNewNode() -> URL? {
@@ -278,19 +272,14 @@ final class WorkspaceStore: ObservableObject {
             : selectedURL
     }
 
-    private func selectRepository(at index: Int, flushCurrent: Bool = true) throws {
+    private func selectRepository(at index: Int) throws {
         guard repositoryURLs.indices.contains(index), index != repositoryIndex else {
             persistRepositories()
             return
         }
-        if flushCurrent {
-            try flushPendingSave()
-        }
+        beforeMutation?()
         try validateRepository(repositoryURLs[index])
-        pendingSave?.cancel()
-        pendingSave = nil
         selectedURL = nil
-        currentMarkdown = ""
         repositoryIndex = index
         try reload()
         persistRepositories()
@@ -370,6 +359,7 @@ enum WorkspaceStoreError: LocalizedError {
     case outsideLibrary
     case folderUnavailable
     case cannotMoveIntoItself
+    case unsupportedItem
 
     var errorDescription: String? {
         switch self {
@@ -378,6 +368,7 @@ enum WorkspaceStoreError: LocalizedError {
         case .outsideLibrary: return "That location is outside the DayDream library."
         case .folderUnavailable: return "The selected folder is unavailable."
         case .cannotMoveIntoItself: return "A folder cannot be moved into itself."
+        case .unsupportedItem: return "Only Markdown files and folders can be pasted here."
         }
     }
 }

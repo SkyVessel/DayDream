@@ -8,6 +8,8 @@ import AppKit
 final class DayDreamTextView: NSTextView {
 
     var markdownDidChange: ((String) -> Void)?
+    /// 获得键盘焦点时回调（窗格焦点跟踪 / 退出侧栏焦点）。
+    var onBecameFirstResponder: (() -> Void)?
     private var isLoadingDocument = false
     private lazy var slashPanel = SlashCommandPanel()
     private var selectedSlashCommandIndex = 0
@@ -994,7 +996,10 @@ final class DayDreamTextView: NSTextView {
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
-        if ok { updateCaret(animated: true) }
+        if ok {
+            updateCaret(animated: true)
+            onBecameFirstResponder?()
+        }
         return ok
     }
 

@@ -27,7 +27,12 @@ enum SidebarTreeProjection {
 struct SidebarView: View {
     @ObservedObject var store: WorkspaceStore
     @ObservedObject private var settings = EditorSettings.shared
+    @ObservedObject private var shortcutCenter = ShortcutCenter.shared
     let isFullScreen: Bool
+    /// 打开笔记（由 WorkspaceView 注入，进入当前焦点窗格）。
+    var onOpenNote: ((URL) -> Void)?
+    /// 结构变更（重命名/移动/删除）同步给窗格。
+    var onStructureChange: ((WorkspaceStructureChange) -> Void)?
     @State private var expandedFolders: Set<URL> = []
     @State private var editingURL: URL?
     @State private var draftName = ""
@@ -49,18 +54,27 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(rows, id: \.node.id) { row in
-                        nodeRow(row)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(rows, id: \.node.id) { row in
+                            nodeRow(row)
+                        }
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.bottom, 14)
+                }
+                .dropDestination(for: URL.self) { items, _ in
+                    guard let source = items.first else { return false }
+                    return performDropToRoot(source)
+                }
+                .onChange(of: shortcutCenter.sidebarNavigationURL) { _, url in
+                    if let url {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            proxy.scrollTo(url, anchor: .center)
+                        }
                     }
                 }
-                .padding(.horizontal, 9)
-                .padding(.bottom, 14)
-            }
-            .dropDestination(for: URL.self) { items, _ in
-                guard let source = items.first else { return false }
-                return performDropToRoot(source)
             }
         }
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
@@ -68,6 +82,29 @@ struct SidebarView: View {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor).opacity(0.45))
                 .frame(width: 0.5)
+        }
+        .background {
+            // 侧栏键盘导航（⌘O 进入）：↑/↓ 移动，Enter 选取，Esc 退出。
+            if shortcutCenter.isSidebarFocused {
+                Group {
+                    Button("") { moveSidebarNavigation(by: -1) }
+                        .keyboardShortcut(.upArrow, modifiers: [])
+                    Button("") { moveSidebarNavigation(by: 1) }
+                        .keyboardShortcut(.downArrow, modifiers: [])
+                    Button("") { confirmSidebarNavigation() }
+                        .keyboardShortcut(.return, modifiers: [])
+                    Button("") { exitSidebarNavigation() }
+                        .keyboardShortcut(.escape, modifiers: [])
+                }
+                .frame(width: 0, height: 0)
+                .opacity(0)
+            }
+        }
+        .onAppear { registerShortcutActions() }
+        .onReceive(NotificationCenter.default.publisher(for: .dayDreamBeginRename)) { note in
+            if let url = note.object as? URL {
+                beginRename(url, currentName: url.deletingPathExtension().lastPathComponent)
+            }
         }
         .alert(
             L10n.t("DayDream 无法完成该操作", "DayDream couldn’t complete that action"),
@@ -302,10 +339,11 @@ struct SidebarView: View {
     }
 
     private func selectNode(_ node: WorkspaceNode) {
-        do {
-            try store.select(node.url)
-        } catch {
-            store.errorMessage = error.localizedDescription
+        store.select(node.url)
+        shortcutCenter.isSidebarFocused = true
+        shortcutCenter.sidebarNavigationURL = node.url
+        if node.kind == .note {
+            onOpenNote?(node.url)
         }
     }
 
@@ -360,6 +398,7 @@ struct SidebarView: View {
         do {
             let wasExpanded = expandedFolders.remove(node.url) != nil
             let renamed = try store.rename(node.url, to: draftName)
+            onStructureChange?(.moved(from: node.url, to: renamed))
             if wasExpanded { expandedFolders.insert(renamed) }
             editingURL = nil
             focusedEditingURL = nil
@@ -427,6 +466,7 @@ struct SidebarView: View {
         do {
             expandedFolders.remove(node.url)
             try store.delete(node.url)
+            onStructureChange?(.removed(node.url))
         } catch {
             store.errorMessage = error.localizedDescription
         }
@@ -436,6 +476,10 @@ struct SidebarView: View {
 
     private func rowBackgroundFill(for url: URL) -> Color {
         if dropTargetURL == url { return Color.primary.opacity(0.14) }
+        if shortcutCenter.isSidebarFocused,
+           shortcutCenter.sidebarNavigationURL == url {
+            return Color.primary.opacity(0.16)
+        }
         if store.selectedURL == url { return Color.primary.opacity(0.075) }
         return .clear
     }
@@ -468,6 +512,7 @@ struct SidebarView: View {
 
         do {
             let moved = try store.move(standardized, toFolder: folder)
+            onStructureChange?(.moved(from: standardized, to: moved))
             if let expandOnSuccess { expandedFolders.insert(expandOnSuccess) }
             // 被拖动的文件夹如果处于展开状态，跟随新路径。
             if expandedFolders.contains(standardized) {
@@ -498,6 +543,72 @@ struct SidebarView: View {
             resetTransientState()
         } catch {
             store.errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - 侧栏键盘导航（⌘O）
+
+    private func moveSidebarNavigation(by delta: Int) {
+        let allRows = rows
+        guard !allRows.isEmpty else { return }
+        let current = shortcutCenter.sidebarNavigationURL
+        let index = allRows.firstIndex { $0.node.url == current } ?? (delta > 0 ? -1 : allRows.count)
+        let next = min(max(index + delta, 0), allRows.count - 1)
+        shortcutCenter.sidebarNavigationURL = allRows[next].node.url
+    }
+
+    private func confirmSidebarNavigation() {
+        guard let url = shortcutCenter.sidebarNavigationURL,
+              let row = rows.first(where: { $0.node.url == url }) else { return }
+        if row.node.kind == .folder {
+            withAnimation(.easeOut(duration: 0.14)) {
+                if expandedFolders.contains(url) {
+                    expandedFolders.remove(url)
+                } else {
+                    expandedFolders.insert(url)
+                }
+            }
+        } else {
+            selectNode(row.node)
+            exitSidebarNavigation()
+        }
+    }
+
+    private func exitSidebarNavigation() {
+        shortcutCenter.isSidebarFocused = false
+        shortcutCenter.sidebarNavigationURL = nil
+        shortcutCenter.refocusEditor()
+    }
+
+    // MARK: - 快捷键动作注册（⌘R / ⌘C / ⌘V）
+
+    private func registerShortcutActions() {
+        shortcutCenter.renameSelection = { [store] in
+            if let url = store.selectedURL {
+                NotificationCenter.default.post(name: .dayDreamBeginRename, object: url)
+            }
+        }
+        shortcutCenter.copySelection = { [store] in
+            guard let url = store.selectedURL else { return }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([url as NSURL])
+        }
+        shortcutCenter.paste = { [store] in
+            guard let urls = NSPasteboard.general.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL], let source = urls.first else { return }
+            do {
+                let target = store.selectedURL.map { url -> URL in
+                    url.pathExtension.lowercased() == "md"
+                        ? url.deletingLastPathComponent()
+                        : url
+                }
+                try store.pasteItem(from: source, into: target)
+            } catch {
+                store.errorMessage = error.localizedDescription
+            }
         }
     }
 
