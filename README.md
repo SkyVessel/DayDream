@@ -1,38 +1,38 @@
 # DayDream
 
-DayDream 是一款 macOS 原生 Markdown 编辑器，专注于安静的写作体验。
+DayDream is a native macOS Markdown editor focused on a calm writing experience.
 
 ## v1.0.0
 
-- Markdown 标题、列表、任务清单、引用、代码块和分隔线；支持 `/` 检索样式。
-- 可配置的键盘工具条：字体、颜色、高光和段落样式，作用于选区或后续输入。
-- 弹性显现与 Falling Text 打字特效，可切换和调整。
-- 图片、视频卡片支持拖动排版与等比缩放；网页链接以带站点图标的行内链接显示。
-- Focus、Ultra Focus 与 Retype 写作模式。
-- Markdown / Word 导入导出、笔记与文件夹管理、字数统计、可导入字体。
-- 样式撤销与重做；默认关闭拼写修正。
+- Markdown headings, lists, task lists, quotes, code blocks, and dividers; `/` opens the style palette.
+- Configurable keyboard toolbars: fonts, colors, highlights, and paragraph styles, applied to the selection or to subsequent typing.
+- Elastic reveal and Falling Text typing effects, toggleable and adjustable.
+- Image and video cards with drag layout and proportional scaling; web links appear as inline links with site icons.
+- Focus, Ultra Focus, and Retype writing modes.
+- Markdown / Word import and export, note and folder management, word count, and importable fonts.
+- Style undo and redo; spell correction is off by default.
 
-需要 macOS 14 或更新版本。首发安装包面向 Apple Silicon（arm64）。
+Requires macOS 14 or later. The initial release build targets Apple Silicon (arm64).
 
-## 安装
+## Install
 
-下载 DMG 后，将 DayDream 拖到 Applications；也可解压 ZIP 后移动应用。
-当前发行包使用本地临时签名，未使用 Developer ID 签名或经过 Apple 公证。系统可能要求在“系统设置 → 隐私与安全性”中确认允许打开；仅在确认下载来源和校验值后操作。
+Download the DMG and drag DayDream to Applications, or unzip the ZIP and move the app.
+The current release is signed with a local ad-hoc signature — it is not signed with a Developer ID or notarized by Apple. macOS may ask you to confirm in System Settings → Privacy & Security before opening; only do so after verifying the download source and checksums.
 
-## 常用快捷键
+## Keyboard Shortcuts
 
-- `⌘1` / `⌘2`：按住 ⌘、重复按数字预选工具，松开 ⌘ 应用。
-- `⌘3`：恢复默认打字样式。已有自定义快捷键会保留。
-- `⌥⌘↑` / `⌥⌘↓`：进入 / 退出 Ultra Focus。
-- `⌃⌥R`：开启 / 退出 Retype。
+- `⌘1` / `⌘2`: hold ⌘ and tap the number to preview tools; release ⌘ to apply.
+- `⌘3`: reset to the default typing style. Existing custom shortcuts are preserved.
+- `⌥⌘↑` / `⌥⌘↓`: enter / exit Ultra Focus.
+- `⌃⌥R`: start / exit Retype.
 
-工具和快捷键可在 Settings 中调整。已有用户偏好不会被新默认值覆盖。
+Tools and shortcuts can be adjusted in Settings. Existing user preferences are never overwritten by new defaults.
 
-## 文档格式
+## Document Format
 
-笔记保存为 UTF-8 Markdown。字体、颜色、高光及媒体使用 HTML 后备表示；不同 Markdown 阅读器对 CSS 和视频的支持有所不同。媒体资源保存在笔记旁的 `.daydream-assets` 文件夹，移动或备份笔记时请一并保留。
+Notes are saved as UTF-8 Markdown. Fonts, colors, highlights, and media use HTML fallbacks; support for CSS and video varies across Markdown readers. Media assets live in a `.daydream-assets` folder next to the note — keep it alongside the note when moving or backing up.
 
-## 本地开发与打包
+## Build & Package Locally
 
 ```bash
 swift run
@@ -40,4 +40,4 @@ swift test --filter ToolbarPolishTests
 ./Scripts/package-app.sh --no-launch
 ```
 
-`package-app.sh` 不带参数时会在打包后启动应用；`--no-launch` 只打包。
+`package-app.sh` launches the app after packaging; `--no-launch` only builds the bundle.
