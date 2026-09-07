@@ -16,7 +16,7 @@ struct WorkspaceNode: Identifiable, Equatable, Hashable, Sendable {
 }
 
 /// 库结构管理：文件树、选中项、多笔记库。
-/// 文档内容的读写由 EditorPaneStore 负责（每个编辑器窗格各自落盘）。
+/// 文档内容的读写由 DocumentController 负责。
 @MainActor
 final class WorkspaceStore: ObservableObject {
     @Published private(set) var nodes: [WorkspaceNode] = []
@@ -29,7 +29,7 @@ final class WorkspaceStore: ObservableObject {
     var canSelectPreviousRepository: Bool { repositoryIndex > 0 }
     var canSelectNextRepository: Bool { repositoryIndex + 1 < repositoryURLs.count }
 
-    /// 结构变更（重命名/移动/删除/粘贴）前调用——视图层用来先把各窗格落盘。
+    /// 结构变更（重命名/移动/删除/粘贴）前调用——视图层先把当前文档落盘。
     var beforeMutation: (() -> Void)?
 
     private let fileManager: FileManager
@@ -123,6 +123,18 @@ final class WorkspaceStore: ObservableObject {
     }
 
     @discardableResult
+    func importDocument(
+        from source: URL,
+        service: DocumentTransferService = DocumentTransferService()
+    ) throws -> URL {
+        beforeMutation?()
+        let parent = try validatedDirectory(parentForNewNode())
+        let url = try service.importDocument(from: source, into: parent)
+        try reload()
+        return url
+    }
+
+    @discardableResult
     func rename(_ url: URL, to proposedName: String) throws -> URL {
         beforeMutation?()
         let source = url.standardizedFileURL
@@ -177,6 +189,7 @@ final class WorkspaceStore: ObservableObject {
         if fileManager.fileExists(atPath: destination.path) {
             throw WorkspaceStoreError.nameAlreadyExists
         }
+        try MediaResources.copyAlongsideDocument(from: source, to: destination)
         try fileManager.moveItem(at: source, to: destination)
 
         // 同步选中项路径（选中的笔记被移动，或它所在的文件夹被移动）。
@@ -243,6 +256,7 @@ final class WorkspaceStore: ObservableObject {
             baseName: baseName,
             pathExtension: isDirectory.boolValue ? nil : "md"
         )
+        try MediaResources.copyAlongsideDocument(from: src, to: destination)
         try fileManager.copyItem(at: src, to: destination)
         try reload()
         return destination

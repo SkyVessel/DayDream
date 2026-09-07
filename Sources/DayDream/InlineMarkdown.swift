@@ -4,10 +4,18 @@ import AppKit
 struct InlineStyle: Equatable, Sendable {
     var bold = false
     var italic = false
+    var code = false
+    var linkDestination: String?
+    var imageDestination: String?
     var textColor: String?
     var highlight: String?
+    var fontFamily: String?
+    var media: MediaCard?
 
-    var isPlain: Bool { !bold && !italic && textColor == nil && highlight == nil }
+    var isPlain: Bool {
+        !bold && !italic && !code && linkDestination == nil && imageDestination == nil
+            && textColor == nil && highlight == nil && fontFamily == nil && media == nil
+    }
 }
 
 /// 一段带行内样式的文本（range 基于解析后的纯文本）。
@@ -42,7 +50,7 @@ enum InlineMarkdown {
     ) {
         var rest = Substring(source)
         while !rest.isEmpty {
-            // 找最近的标记：span / ** / *
+            // 找最近的标记：span / ` / ** / *
             guard let marker = nextMarker(in: rest) else {
                 appendStyled(String(rest), style: style, plain: &plain, runs: &runs)
                 return
@@ -52,6 +60,50 @@ enum InlineMarkdown {
             }
 
             switch marker.kind {
+            case let .media(card):
+                var inner = style
+                inner.media = card
+                appendStyled("\u{FFFC}", style: inner, plain: &plain, runs: &runs)
+                rest = rest[marker.range.upperBound...]
+
+            case let .link(label, destination):
+                var inner = style
+                inner.linkDestination = destination
+                parseInto(label, style: inner, plain: &plain, runs: &runs)
+                rest = rest[marker.range.upperBound...]
+
+            case let .image(label, destination):
+                var inner = style
+                inner.imageDestination = destination
+                appendStyled(label, style: inner, plain: &plain, runs: &runs)
+                rest = rest[marker.range.upperBound...]
+
+            case let .code(delimiter):
+                guard let close = matchingBacktickClose(
+                    delimiter: delimiter,
+                    in: rest,
+                    after: marker.range.upperBound
+                ) else {
+                    appendStyled(String(rest[marker.range]), style: style, plain: &plain, runs: &runs)
+                    rest = rest[marker.range.upperBound...]
+                    continue
+                }
+                var inner = style
+                inner.code = true
+                // 代码跨度里的 Markdown 标记是字面量，不再递归解析。
+                var code = String(rest[marker.range.upperBound..<close.lowerBound])
+                if code.first == " ", code.last == " ", code.contains(where: { !$0.isWhitespace }) {
+                    code.removeFirst()
+                    code.removeLast()
+                }
+                appendStyled(
+                    code,
+                    style: inner,
+                    plain: &plain,
+                    runs: &runs
+                )
+                rest = rest[close.upperBound...]
+
             case .span(let css):
                 guard let close = rest.range(of: "</span>", range: marker.range.upperBound..<rest.endIndex) else {
                     appendStyled(String(rest[marker.range]), style: style, plain: &plain, runs: &runs)
@@ -65,8 +117,18 @@ enum InlineMarkdown {
                     }
                     guard pair.count == 2 else { continue }
                     switch pair[0] {
-                    case "color": inner.textColor = pair[1]
-                    case "background-color": inner.highlight = pair[1]
+                    case "color":
+                        inner.textColor = PortableInlineColor.presetName(
+                            forCSSValue: pair[1],
+                            property: .text
+                        )
+                    case "font-family":
+                        inner.fontFamily = pair[1].trimmingCharacters(in: CharacterSet(charactersIn: "'"))
+                    case "background-color":
+                        inner.highlight = PortableInlineColor.presetName(
+                            forCSSValue: pair[1],
+                            property: .highlight
+                        )
                     default: break
                     }
                 }
@@ -103,6 +165,10 @@ enum InlineMarkdown {
     }
 
     private enum MarkerKind: Equatable {
+        case media(MediaCard)
+        case code(delimiter: String)
+        case link(label: String, destination: String)
+        case image(label: String, destination: String)
         case span(css: String)
         case boldItalic
         case bold
@@ -117,6 +183,26 @@ enum InlineMarkdown {
     /// 找到最近的一个标记（span 开标签 / ** / *），返回其种类与范围。
     private static func nextMarker(in text: Substring) -> Marker? {
         var candidates: [(index: String.Index, make: () -> Marker)] = []
+
+        if let opening = text.range(of: "<figure data-daydream=\""),
+           let closing = text.range(of: "</figure>", range: opening.upperBound..<text.endIndex),
+           let card = MediaCard.parse(String(text[opening.lowerBound..<closing.upperBound])) {
+            candidates.append((opening.lowerBound, { Marker(kind: .media(card), range: opening.lowerBound..<closing.upperBound) }))
+        }
+        if let link = firstLinkOrImageMarker(in: text) {
+            candidates.append((link.range.lowerBound, { link }))
+        }
+
+        if let backtick = text.firstIndex(of: "`") {
+            var after = text.index(after: backtick)
+            while after < text.endIndex, text[after] == "`" {
+                after = text.index(after: after)
+            }
+            let delimiter = String(text[backtick..<after])
+            candidates.append((backtick, {
+                Marker(kind: .code(delimiter: delimiter), range: backtick..<after)
+            }))
+        }
 
         if let spanOpen = text.range(of: "<span style=\""),
            let closeQuote = text.range(of: "\">", range: spanOpen.upperBound..<text.endIndex) {
@@ -154,6 +240,52 @@ enum InlineMarkdown {
         return earliest.make()
     }
 
+    private static func firstLinkOrImageMarker(in text: Substring) -> Marker? {
+        var searchStart = text.startIndex
+        while searchStart < text.endIndex,
+              let open = text[searchStart...].firstIndex(of: "[") {
+            let isImage = open > text.startIndex && text[text.index(before: open)] == "!"
+            let labelStart = text.index(after: open)
+            guard let separator = text.range(of: "](", range: labelStart..<text.endIndex),
+                  let close = text[separator.upperBound...].firstIndex(of: ")") else {
+                return nil
+            }
+            let label = String(text[labelStart..<separator.lowerBound])
+            let destination = String(text[separator.upperBound..<close])
+            guard !label.isEmpty, !destination.isEmpty else {
+                searchStart = text.index(after: open)
+                continue
+            }
+            let start = isImage ? text.index(before: open) : open
+            return Marker(
+                kind: isImage
+                    ? .image(label: label, destination: destination)
+                    : .link(label: label, destination: destination),
+                range: start..<text.index(after: close)
+            )
+        }
+        return nil
+    }
+
+    private static func matchingBacktickClose(
+        delimiter: String,
+        in text: Substring,
+        after start: String.Index
+    ) -> Range<String.Index>? {
+        var searchStart = start
+        while let candidate = text.range(of: delimiter, range: searchStart..<text.endIndex) {
+            let hasBacktickBefore = candidate.lowerBound > text.startIndex
+                && text[text.index(before: candidate.lowerBound)] == "`"
+            let hasBacktickAfter = candidate.upperBound < text.endIndex
+                && text[candidate.upperBound] == "`"
+            if !hasBacktickBefore, !hasBacktickAfter {
+                return candidate
+            }
+            searchStart = candidate.upperBound
+        }
+        return nil
+    }
+
     private static func appendStyled(
         _ text: String,
         style: InlineStyle,
@@ -177,6 +309,16 @@ enum InlineMarkdown {
     /// 相邻且样式相同的片段会合并，避免词距等无关属性把样式切碎。
     static func serialize(_ line: NSAttributedString) -> String {
         guard line.length > 0 else { return "" }
+        var mediaRange: NSRange?
+        var mediaCard: MediaCard?
+        line.enumerateAttribute(.dayDreamMedia, in: NSRange(location: 0, length: line.length)) { value, range, stop in
+            if let card = value as? MediaCard { mediaRange = range; mediaCard = card; stop.pointee = true }
+        }
+        if let range = mediaRange, let card = mediaCard {
+            let before = serialize(line.attributedSubstring(from: NSRange(location: 0, length: range.location)))
+            let after = serialize(line.attributedSubstring(from: NSRange(location: NSMaxRange(range), length: line.length - NSMaxRange(range))))
+            return before + card.markdown + after
+        }
 
         // 1) 按样式切段
         var segments: [(text: String, style: InlineStyle)] = []
@@ -184,12 +326,17 @@ enum InlineMarkdown {
             in: NSRange(location: 0, length: line.length),
             options: []
         ) { attributes, range, _ in
+            guard attributes[.dayDreamLinkIcon] == nil else { return }
             let text = line.attributedSubstring(from: range).string
             let style = InlineStyle(
                 bold: attributes[.dayDreamBold] as? Bool ?? false,
                 italic: attributes[.dayDreamItalic] as? Bool ?? false,
+                code: attributes[.dayDreamInlineCode] as? Bool ?? false,
+                linkDestination: attributes[.dayDreamLink] as? String,
+                imageDestination: attributes[.dayDreamImage] as? String,
                 textColor: attributes[.dayDreamTextColor] as? String,
-                highlight: attributes[.dayDreamHighlight] as? String
+                highlight: attributes[.dayDreamHighlight] as? String,
+                fontFamily: attributes[.dayDreamFontFamily] as? String
             )
             if let last = segments.last, last.style == style {
                 segments[segments.count - 1].text += text
@@ -204,32 +351,122 @@ enum InlineMarkdown {
         while index < segments.count {
             let spanColor = segments[index].style.textColor
             let spanHighlight = segments[index].style.highlight
+            let spanFont = segments[index].style.fontFamily
+            let linkDestination = segments[index].style.linkDestination
+            let imageDestination = segments[index].style.imageDestination
             var inner = ""
             while index < segments.count,
                   segments[index].style.textColor == spanColor,
-                  segments[index].style.highlight == spanHighlight {
-                inner += wrapBoldItalic(segments[index].text, style: segments[index].style)
+                  segments[index].style.highlight == spanHighlight,
+                  segments[index].style.fontFamily == spanFont,
+                  segments[index].style.linkDestination == linkDestination,
+                  segments[index].style.imageDestination == imageDestination {
+                inner += wrapInline(segments[index].text, style: segments[index].style)
                 index += 1
             }
-            result += wrapSpan(inner, textColor: spanColor, highlight: spanHighlight)
+            if let linkDestination {
+                inner = "[\(inner)](\(linkDestination))"
+            } else if let imageDestination {
+                inner = "![\(inner)](\(imageDestination))"
+            }
+            result += wrapSpan(inner, textColor: spanColor, highlight: spanHighlight, fontFamily: spanFont)
         }
         return result
     }
 
-    private static func wrapBoldItalic(_ text: String, style: InlineStyle) -> String {
+    private static func wrapInline(_ text: String, style: InlineStyle) -> String {
         guard !text.isEmpty else { return "" }
-        if style.bold, style.italic { return "***\(text)***" }
-        if style.bold { return "**\(text)**" }
-        if style.italic { return "*\(text)*" }
+        if style.code {
+            let delimiter = String(
+                repeating: "`",
+                count: longestBacktickRun(in: text) + 1
+            )
+            let needsPadding = text.first == "`" || text.last == "`"
+            let content = needsPadding ? " \(text) " : text
+            return delimiter + content + delimiter
+        }
+        if style.bold || style.italic {
+            let leading = String(text.prefix(while: \.isWhitespace))
+            let trailing = String(text.reversed().prefix(while: \.isWhitespace).reversed())
+            guard leading.count < text.count else { return text }
+            let content = String(text.dropFirst(leading.count).dropLast(trailing.count))
+            let marker = style.bold && style.italic ? "***" : style.bold ? "**" : "*"
+            return leading + marker + content + marker + trailing
+        }
         return text
     }
 
-    private static func wrapSpan(_ text: String, textColor: String?, highlight: String?) -> String {
+    private static func longestBacktickRun(in text: String) -> Int {
+        var longest = 0
+        var current = 0
+        for character in text {
+            if character == "`" {
+                current += 1
+                longest = max(longest, current)
+            } else {
+                current = 0
+            }
+        }
+        return longest
+    }
+
+    private static func wrapSpan(_ text: String, textColor: String?, highlight: String?, fontFamily: String?) -> String {
         guard !text.isEmpty else { return "" }
         var css: [String] = []
-        if let textColor { css.append("color:\(textColor)") }
-        if let highlight { css.append("background-color:\(highlight)") }
+        if let fontFamily {
+            let cssFamily = ["": "-apple-system", "mono": "monospace", "rounded": "SF Pro Rounded"][fontFamily] ?? fontFamily
+            css.append("font-family:\(cssFamily.filter { $0.isLetter || $0.isNumber || $0 == " " || $0 == "-" })")
+        }
+        if let textColor {
+            css.append("color:\(PortableInlineColor.cssValue(for: textColor, property: .text))")
+        }
+        if let highlight {
+            css.append("background-color:\(PortableInlineColor.cssValue(for: highlight, property: .highlight))")
+        }
         guard !css.isEmpty else { return text }
         return "<span style=\"\(css.joined(separator: ";"))\">\(text)</span>"
+    }
+}
+
+enum PortableInlineColor {
+    enum Property {
+        case text
+        case highlight
+    }
+
+    private static let textValues: [StyleColorPreset: String] = [
+        .caret: "#C48E9C",
+        .yellow: "#8A7A48",
+        .green: "#5F7F68",
+        .blue: "#5B7FA6",
+        .pink: "#9A6E7B",
+    ]
+    private static let highlightValues: [StyleColorPreset: String] = [
+        .caret: "#E8C0C8",
+        .yellow: "#D8C88F",
+        .green: "#A8C7AF",
+        .blue: "#A8BED5",
+        .pink: "#D8B0B8",
+    ]
+
+    static func cssValue(for presetName: String, property: Property) -> String {
+        guard let preset = StyleColorPreset(rawValue: presetName) else { return presetName }
+        return values(for: property)[preset] ?? presetName
+    }
+
+    static func presetName(forCSSValue value: String, property: Property) -> String {
+        if let preset = StyleColorPreset(rawValue: value.lowercased()) {
+            return preset.rawValue
+        }
+        let normalized = value.uppercased()
+        return values(for: property).first(where: { $0.value.uppercased() == normalized })?.key.rawValue
+            ?? value
+    }
+
+    private static func values(for property: Property) -> [StyleColorPreset: String] {
+        switch property {
+        case .text: textValues
+        case .highlight: highlightValues
+        }
     }
 }

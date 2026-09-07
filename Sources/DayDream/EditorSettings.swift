@@ -58,6 +58,9 @@ final class EditorSettings: ObservableObject {
         static let fontFamily = "editor.fontFamily"
         static let highlightPreset = "editor.highlightPreset"
         static let textColorPreset = "editor.textColorPreset"
+        static let focusModeEnabled = "editor.focusModeEnabled"
+        static let wordCompletionEnabled = "editor.wordCompletionEnabled"
+        static let automaticSpellingCorrectionEnabled = "editor.automaticSpellingCorrectionEnabled"
     }
 
     // MARK: - 排版
@@ -107,17 +110,71 @@ final class EditorSettings: ObservableObject {
         didSet { persist(textColorPreset, forKey: Keys.textColorPreset) }
     }
 
+    // MARK: - 写作辅助
+
+    @Published var focusModeEnabled: Bool {
+        didSet { persist(focusModeEnabled, forKey: Keys.focusModeEnabled) }
+    }
+
+    @Published var wordCompletionEnabled: Bool {
+        didSet { persist(wordCompletionEnabled, forKey: Keys.wordCompletionEnabled) }
+    }
+
+    @Published var automaticSpellingCorrectionEnabled: Bool {
+        didSet {
+            persist(
+                automaticSpellingCorrectionEnabled,
+                forKey: Keys.automaticSpellingCorrectionEnabled
+            )
+        }
+    }
+
+    @Published var typingAnimationStyle: String {
+        didSet { persist(typingAnimationStyle, forKey: "editor.typingAnimationStyle") }
+    }
+    @Published var fallingStrength: Double {
+        didSet { persist(fallingStrength, forKey: "editor.fallingStrength") }
+    }
+    @Published var fallingLifetime: Double {
+        didSet { persist(fallingLifetime, forKey: "editor.fallingLifetime") }
+    }
+    @Published var typingAnimationEnabled: Bool {
+        didSet { persist(typingAnimationEnabled, forKey: "editor.typingAnimationEnabled") }
+    }
+    @Published var wordCountEnabled: Bool {
+        didSet { persist(wordCountEnabled, forKey: "editor.wordCountEnabled") }
+    }
+    @Published var writingBars: [[WritingTool]] {
+        didSet {
+            if let data = try? JSONEncoder().encode(writingBars) { persist(data, forKey: "editor.writingBars") }
+        }
+    }
+
+    func setWritingTool(_ tool: WritingTool?, bar: Int, slot: Int) {
+        guard writingBars.indices.contains(bar), (0..<4).contains(slot) else { return }
+        var tools = writingBars[bar]
+        if let tool {
+            if slot < tools.count { tools[slot] = tool } else { tools.append(tool) }
+        } else if slot < tools.count { tools.remove(at: slot) }
+        writingBars[bar] = Array(tools.prefix(4))
+    }
+
     // MARK: - 字体解析
 
     var editorFont: NSFont {
-        let size = DayDreamTheme.baseFontSize
+        // 自定义字体以进程级方式注册；访问字体前确保已从应用支持目录加载。
+        _ = FontLibrary.shared.fonts
+        return Self.resolveFont(fontFamily, size: DayDreamTheme.baseFontSize)
+    }
+
+    static func resolveFont(_ fontFamily: String, size: CGFloat) -> NSFont {
         switch fontFamily {
-        case "":
+        case "", "-apple-system", "system-ui":
             return .systemFont(ofSize: size, weight: .regular)
-        case "serif", "rounded", "mono":
+        case "serif", "rounded", "mono", "monospace", "SF Pro Rounded":
             let design: NSFontDescriptor.SystemDesign = switch fontFamily {
             case "serif": .serif
-            case "rounded": .rounded
+            case "rounded", "SF Pro Rounded": .rounded
             default: .monospaced
             }
             guard let descriptor = NSFont.systemFont(ofSize: size)
@@ -140,8 +197,19 @@ final class EditorSettings: ObservableObject {
 
     // MARK: - 持久化
 
-    private init() {
-        let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        typingAnimationStyle = defaults.string(forKey: "editor.typingAnimationStyle") ?? "elastic"
+        fallingStrength = defaults.object(forKey: "editor.fallingStrength") as? Double ?? 1
+        fallingLifetime = defaults.object(forKey: "editor.fallingLifetime") as? Double ?? 0.9
+        typingAnimationEnabled = defaults.object(forKey: "editor.typingAnimationEnabled") as? Bool ?? true
+        wordCountEnabled = defaults.object(forKey: "editor.wordCountEnabled") as? Bool ?? true
+        if let data = defaults.data(forKey: "editor.writingBars"),
+           let bars = try? JSONDecoder().decode([[WritingTool]].self, from: data), bars.count == 2 {
+            writingBars = bars.map { Array($0.prefix(4)) }
+        } else { writingBars = WritingTool.defaultBars }
         contentWidth = (defaults.object(forKey: Keys.contentWidth) as? Double).map { CGFloat($0) } ?? 1200
         lineHeightMultiple = (defaults.object(forKey: Keys.lineHeightMultiple) as? Double)
             .map { CGFloat($0) } ?? DayDreamTheme.lineHeightMultiple
@@ -151,11 +219,15 @@ final class EditorSettings: ObservableObject {
         appearanceMode = AppAppearanceMode(rawValue: defaults.string(forKey: Keys.appearanceMode) ?? "") ?? .system
         highlightPreset = defaults.string(forKey: Keys.highlightPreset) ?? StyleColorPreset.caret.rawValue
         textColorPreset = defaults.string(forKey: Keys.textColorPreset) ?? StyleColorPreset.caret.rawValue
+        focusModeEnabled = defaults.object(forKey: Keys.focusModeEnabled) as? Bool ?? false
+        wordCompletionEnabled = defaults.object(forKey: Keys.wordCompletionEnabled) as? Bool ?? true
+        automaticSpellingCorrectionEnabled = defaults.object(
+            forKey: Keys.automaticSpellingCorrectionEnabled
+        ) as? Bool ?? false
     }
 
     private func persist(_ value: Any, forKey key: String) {
-        UserDefaults.standard.set(value, forKey: key)
+        defaults.set(value, forKey: key)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 }
-

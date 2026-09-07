@@ -7,7 +7,7 @@ import Combine
 final class ShortcutCenter: ObservableObject {
     static let shared = ShortcutCenter()
 
-    /// 侧栏是否处于「焦点」状态（点击侧栏行 / ⌘O 进入，点击编辑器退出）。
+    /// 侧栏是否处于「焦点」状态（⌘O 打开后进入，点击编辑器退出）。
     /// ⌘R / ⌘C / ⌘V 仅在此状态下接管。
     @Published var isSidebarFocused = false
 
@@ -18,15 +18,20 @@ final class ShortcutCenter: ObservableObject {
 
     // 由 WorkspaceView / SidebarView 注册
     var newNote: () -> Void = {}
-    var openSidebarAndNavigate: () -> Void = {}
-    var toggleSplit: () -> Void = {}
-    var switchPaneFocus: () -> Void = {}
-    var closeTabOrWindow: () -> Void = {}
-    var switchTab: (Int) -> Void = { _ in }
+    var toggleSidebar: () -> Void = {}
     var renameSelection: () -> Void = {}
     var copySelection: () -> Void = {}
     var paste: () -> Void = {}
+    var deleteSelection: () -> Void = {}
     var refocusEditor: () -> Void = {}
+    var toggleBold: () -> Void = {}
+    var toggleItalic: () -> Void = {}
+    var toggleHighlight: () -> Void = {}
+    var toggleTextColor: () -> Void = {}
+    var toggleInlineCode: () -> Void = {}
+
+    @Published var ultraFocusEnabled = false
+    var writingCommand: (ShortcutCommand) -> Void = { _ in }
 
     private init() {}
 }

@@ -12,6 +12,9 @@ struct SlashCommand: Identifiable, Equatable {
         case .bullet: return L10n.t("无序列表", "Bulleted list")
         case .numbered: return L10n.t("有序列表", "Numbered list")
         case .todo: return L10n.t("待办事项", "To-do list")
+        case .quote: return L10n.t("引用", "Quote")
+        case .code: return L10n.t("代码块", "Code block")
+        case .divider: return L10n.t("分隔线", "Divider")
         case .body: return L10n.t("正文", "Text")
         }
     }
@@ -25,13 +28,36 @@ struct SlashCommand: Identifiable, Equatable {
         case .bullet: return L10n.t("创建一个无序列表", "Create a bulleted list")
         case .numbered: return L10n.t("创建一个有序列表", "Create an ordered list")
         case .todo: return L10n.t("用复选框跟踪任务", "Track a task with a checkbox")
+        case .quote: return L10n.t("突出显示引用内容", "Capture a quoted passage")
+        case .code: return L10n.t("保留格式的多行代码", "Write multi-line code")
+        case .divider: return L10n.t("分隔线", "Divider")
         case .body: return L10n.t("普通文本", "Plain text")
         }
     }
 }
 
 enum SlashCommandCatalog {
+    static func matching(_ query: String) -> [SlashCommand] {
+        let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return all }
+        return all.filter { command in
+            let aliases: String
+            switch command.kind {
+            case .heading(let level): aliases = "heading title h\(level) 标题 \(level)"
+            case .bullet: aliases = "bullet unordered list 无序列表"
+            case .numbered: aliases = "number ordered list 有序 数字列表"
+            case .todo: aliases = "todo checkbox task 待办 复选框"
+            case .quote: aliases = "quote blockquote 引用"
+            case .code: aliases = "code 代码"
+            case .divider: aliases = "divider horizontal rule 分隔线"
+            case .body: aliases = "text 正文"
+            }
+            return (aliases + " " + command.syntax + " " + command.title).lowercased().contains(query)
+        }
+    }
+
     static let all: [SlashCommand] = [
+        .init(syntax: "---", kind: .divider),
         .init(syntax: "#", kind: .heading(level: 1)),
         .init(syntax: "##", kind: .heading(level: 2)),
         .init(syntax: "###", kind: .heading(level: 3)),
@@ -39,6 +65,8 @@ enum SlashCommandCatalog {
         .init(syntax: "-", kind: .bullet),
         .init(syntax: "1.", kind: .numbered),
         .init(syntax: "[ ]", kind: .todo(checked: false)),
+        .init(syntax: ">", kind: .quote),
+        .init(syntax: "```", kind: .code(language: nil)),
     ]
 }
 
@@ -98,7 +126,7 @@ final class SlashCommandPanel: NSPanel {
             frame: NSRect(x: 0, y: 0, width: width, height: height)
         )
 
-        let header = NSTextField(labelWithString: "Basic blocks")
+        let header = NSTextField(labelWithString: commands.isEmpty ? L10n.t("没有匹配的样式", "No matching styles") : L10n.t("样式", "Basic blocks"))
         header.font = .systemFont(ofSize: 12.5, weight: .semibold)
         header.textColor = .secondaryLabelColor
         header.frame = NSRect(
@@ -275,6 +303,8 @@ private final class SlashCommandButton: NSButton {
         color.setFill()
 
         switch command.kind {
+        case .divider:
+            NSBezierPath(rect: NSRect(x: rect.minX, y: rect.midY, width: rect.width, height: 1)).fill()
         case let .heading(level):
             ("H\(level)" as NSString).draw(in: rect.offsetBy(dx: 1, dy: 1), withAttributes: [
                 .font: NSFont.systemFont(ofSize: 15.5, weight: .medium),
@@ -296,6 +326,22 @@ private final class SlashCommandButton: NSButton {
             check.lineCapStyle = .round
             check.lineJoinStyle = .round
             check.stroke()
+        case .quote:
+            let bar = NSBezierPath(
+                roundedRect: NSRect(x: rect.minX + 5, y: rect.minY + 3, width: 2.5, height: rect.height - 6),
+                xRadius: 1.25,
+                yRadius: 1.25
+            )
+            bar.fill()
+            ("“" as NSString).draw(in: rect.offsetBy(dx: 8, dy: 1), withAttributes: [
+                .font: NSFont.systemFont(ofSize: 17, weight: .medium),
+                .foregroundColor: color,
+            ])
+        case .code:
+            ("</>" as NSString).draw(in: rect.offsetBy(dx: 0, dy: 3), withAttributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold),
+                .foregroundColor: color,
+            ])
         case .body:
             break
         }

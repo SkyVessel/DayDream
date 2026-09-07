@@ -5,16 +5,18 @@ import AppKit
 struct EditorView: NSViewRepresentable {
     let markdown: String
     let documentURL: URL?
+    let reloadRevision: Int
     let autofocus: Bool
     let onMarkdownChange: (String) -> Void
-    /// 编辑器获得键盘焦点时回调（用于窗格焦点跟踪 / 退出侧栏焦点）。
+    /// 编辑器获得键盘焦点时回调（用于退出侧栏焦点）。
     var onBecameFirstResponder: (() -> Void)?
-    /// 创建后把底层文本视图注册出去（用于 ⌘⌥←/→ 焦点切换）。
+    /// 创建后把底层文本视图注册出去（用于从侧栏恢复编辑器焦点）。
     var registerTextView: ((DayDreamTextView) -> Void)?
 
     init(
         markdown: String = "",
         documentURL: URL? = nil,
+        reloadRevision: Int = 0,
         autofocus: Bool = true,
         onMarkdownChange: @escaping (String) -> Void = { _ in },
         onBecameFirstResponder: (() -> Void)? = nil,
@@ -22,6 +24,7 @@ struct EditorView: NSViewRepresentable {
     ) {
         self.markdown = markdown
         self.documentURL = documentURL
+        self.reloadRevision = reloadRevision
         self.autofocus = autofocus
         self.onMarkdownChange = onMarkdownChange
         self.onBecameFirstResponder = onBecameFirstResponder
@@ -34,7 +37,7 @@ struct EditorView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
+        let layoutManager = TypingLayoutManager()
         let textContainer = NSTextContainer()
         textStorage.addLayoutManager(layoutManager)
         layoutManager.addTextContainer(textContainer)
@@ -61,6 +64,7 @@ struct EditorView: NSViewRepresentable {
         scrollView.backgroundColor = DayDreamTheme.background(for: scrollView.effectiveAppearance)
 
         context.coordinator.loadedURL = documentURL
+        context.coordinator.loadedRevision = reloadRevision
         context.coordinator.hasLoadedDocument = true
         context.coordinator.onMarkdownChange = onMarkdownChange
         textView.onBecameFirstResponder = onBecameFirstResponder
@@ -68,6 +72,7 @@ struct EditorView: NSViewRepresentable {
         textView.markdownDidChange = { [coordinator = context.coordinator] markdown in
             coordinator.onMarkdownChange(markdown)
         }
+        textView.documentURL = documentURL
         textView.load(markdown: markdown)
 
         // 打开窗口即进入输入状态，光标淡入。
@@ -86,15 +91,19 @@ struct EditorView: NSViewRepresentable {
         textView.onBecameFirstResponder = onBecameFirstResponder
 
         if !context.coordinator.hasLoadedDocument
-            || context.coordinator.loadedURL != documentURL {
+            || context.coordinator.loadedURL != documentURL
+            || context.coordinator.loadedRevision != reloadRevision {
             context.coordinator.loadedURL = documentURL
+            context.coordinator.loadedRevision = reloadRevision
             context.coordinator.hasLoadedDocument = true
+            textView.documentURL = documentURL
             textView.load(markdown: markdown)
         }
     }
 
     final class Coordinator {
         var loadedURL: URL?
+        var loadedRevision = 0
         var hasLoadedDocument = false
         var onMarkdownChange: (String) -> Void
 

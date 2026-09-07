@@ -66,6 +66,38 @@ final class MarkdownTextStorageTests: XCTestCase {
         XCTAssertGreaterThan(headingFont.pointSize, bodyFont.pointSize)
     }
 
+    func testFencedCodeKeepsMarkdownMarkersLiteralAndUsesMonospacedFont() throws {
+        let document = MarkdownDocumentCodec.parse("```swift\nlet value = *literal*\n```")
+        let value = MarkdownTextStorage.attributedString(
+            from: document,
+            appearance: try XCTUnwrap(NSAppearance(named: .aqua)),
+            scale: 1
+        )
+
+        XCTAssertEqual(value.string, "let value = *literal*")
+        XCTAssertEqual(
+            value.attribute(.dayDreamBlockKind, at: 0, effectiveRange: nil) as? MarkdownBlockKind,
+            .code(language: "swift")
+        )
+        let font = try XCTUnwrap(value.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.monoSpace))
+    }
+
+    func testNestedListIndentationSurvivesAttributedStorageRoundTrip() throws {
+        let document = MarkdownDocumentCodec.parse("- Parent\n  - Child")
+        let value = MarkdownTextStorage.attributedString(
+            from: document,
+            appearance: try XCTUnwrap(NSAppearance(named: .aqua)),
+            scale: 1
+        )
+
+        XCTAssertEqual(value.attribute(.dayDreamListIndentation, at: 7, effectiveRange: nil) as? String, "  ")
+        XCTAssertEqual(
+            MarkdownTextStorage.document(from: value, fallbackKind: .bullet),
+            document
+        )
+    }
+
     private func makeTextView() -> DayDreamTextView {
         let storage = NSTextStorage()
         let layoutManager = NSLayoutManager()

@@ -6,6 +6,7 @@ import XCTest
 final class SlashCommandTests: XCTestCase {
     func testCatalogContainsOnlyRequestedCommands() {
         XCTAssertEqual(SlashCommandCatalog.all.map(\.kind), [
+            .divider,
             .heading(level: 1),
             .heading(level: 2),
             .heading(level: 3),
@@ -13,16 +14,18 @@ final class SlashCommandTests: XCTestCase {
             .bullet,
             .numbered,
             .todo(checked: false),
+            .quote,
+            .code(language: nil),
         ])
         XCTAssertEqual(SlashCommandCatalog.all.map(\.syntax), [
-            "#", "##", "###", "####", "-", "1.", "[ ]",
+            "---", "#", "##", "###", "####", "-", "1.", "[ ]", ">", "```",
         ])
     }
 
     func testSelectionWrapsInBothDirections() {
-        XCTAssertEqual(SlashCommandNavigation.moved(from: 6, by: 1, count: 7), 0)
-        XCTAssertEqual(SlashCommandNavigation.moved(from: 0, by: -1, count: 7), 6)
-        XCTAssertEqual(SlashCommandNavigation.moved(from: 2, by: 1, count: 7), 3)
+        XCTAssertEqual(SlashCommandNavigation.moved(from: 8, by: 1, count: 9), 0)
+        XCTAssertEqual(SlashCommandNavigation.moved(from: 0, by: -1, count: 9), 8)
+        XCTAssertEqual(SlashCommandNavigation.moved(from: 2, by: 1, count: 9), 3)
     }
 
     func testSlashOnEmptyParagraphOpensAndAppliesCommand() {

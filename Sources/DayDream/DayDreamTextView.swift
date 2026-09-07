@@ -7,13 +7,49 @@ import AppKit
 /// 用 60fps 的缓动插值让光标平缓地滑向目标，永不瞬移、永不闪烁。
 final class DayDreamTextView: NSTextView {
 
+    // The final empty paragraph has no character to carry semantic attributes.
+    // Its state belongs to the document, never to the current selection.
+    var trailingBlockKind: MarkdownBlockKind = .body
+    var trailingListIndentation = ""
+    var trailingOrderedStart = 1
+    var documentURL: URL?
+    var wordCountDidChange: ((Int) -> Void)?
+    var retypeStateDidChange: ((Bool) -> Void)?
+    var retypeSession: RetypeSession?
+    var retypeMarkedText = ""
+    var activeWritingStyle: WritingTool?
+    var activeWritingColor: WritingTool?
+    var activeWritingHighlight: WritingTool?
+    var writingBarIndices = [-1, -1]
+    var writingBarPanel: NSPanel?
+    var writingBarTrigger: UInt16?
+    var writingBarModifiers: NSEvent.ModifierFlags = .command
+    var pendingWritingTool: WritingTool?
+    var writingBadge: NSView?
+    var writingBadgeTimer: Timer?
+    var isDisplayCommitScheduled = false
+    var ultraScrollTimer: Timer?
+    var isUltraFocus = false
+    var mediaViews: [UUID: MediaCardView] = [:]
+    var isLayingOutMedia = false
     var markdownDidChange: ((String) -> Void)?
-    /// 获得键盘焦点时回调（窗格焦点跟踪 / 退出侧栏焦点）。
+    /// 获得键盘焦点时回调（退出侧栏焦点）。
     var onBecameFirstResponder: (() -> Void)?
     private var isLoadingDocument = false
     private lazy var slashPanel = SlashCommandPanel()
     private var selectedSlashCommandIndex = 0
     private(set) var isSlashCommandMenuOpen = false
+    private var isApplyingSpaceWidth = false
+    private var mostRecentEditChangedCharacters = false
+    private var sourcePreservation: SourcePreservingMarkdown?
+    private var completionSuffix: String?
+    private var pendingMarkdownNotification: DispatchWorkItem?
+    private var markdownNotificationGeneration = 0
+    private let markdownNotificationDelay: TimeInterval = 0.075
+    private var focusedSentenceRange: NSRange?
+    private var isFocusAppearanceApplied = false
+    private var focusTextRevision = 0
+    private var resolvedFocusTextRevision = -1
 
     // MARK: - 光标状态
 
@@ -52,6 +88,9 @@ final class DayDreamTextView: NSTextView {
     }
 
     private func commonInit() {
+        registerForDraggedTypes([.fileURL, .URL, .png, .tiff])
+        linkTextAttributes = [.foregroundColor: DayDreamTheme.inlineTextColor("blue", for: effectiveAppearance), .underlineStyle: 0]
+        NotificationCenter.default.addObserver(self, selector: #selector(siteIconLoaded(_:)), name: .siteIconDidLoad, object: nil)
         isRichText = false
         allowsUndo = true
         usesFontPanel = false
@@ -59,12 +98,13 @@ final class DayDreamTextView: NSTextView {
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticDashSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
-        isAutomaticSpellingCorrectionEnabled = false
-        isContinuousSpellCheckingEnabled = false
+        isAutomaticSpellingCorrectionEnabled = retypeSession == nil && EditorSettings.shared.automaticSpellingCorrectionEnabled
+        isContinuousSpellCheckingEnabled = retypeSession == nil && EditorSettings.shared.automaticSpellingCorrectionEnabled
         isGrammarCheckingEnabled = false
 
         // 隐藏系统光标的颜色（绘制也已在下方被禁用）。
         insertionPointColor = .clear
+        textStorage?.delegate = self
 
         applyTheme()
 
@@ -128,15 +168,22 @@ final class DayDreamTextView: NSTextView {
                     at: location,
                     effectiveRange: nil
                 ) as? MarkdownBlockKind ?? .body
+                let indentation = storage.attribute(
+                    .dayDreamListIndentation,
+                    at: location,
+                    effectiveRange: nil
+                ) as? String ?? ""
                 storage.addAttributes(
                     DayDreamTheme.textAttributes(
                         for: appearance,
                         scale: zoomScale,
-                        blockKind: kind
+                        blockKind: kind,
+                        listIndentation: indentation
                     ),
                     range: paragraphRange
                 )
                 storage.addAttribute(.dayDreamBlockKind, value: kind, range: paragraphRange)
+                storage.addAttribute(.dayDreamListIndentation, value: indentation, range: paragraphRange)
                 location = NSMaxRange(paragraphRange)
             }
             storage.endEditing()
@@ -148,6 +195,9 @@ final class DayDreamTextView: NSTextView {
             applySpaceWidth(in: full)
         }
         updateTypingAttributesForSelection()
+        resetFocusAppearance()
+        updateFocusAppearance()
+        updateWordCompletion()
         needsDisplay = true
     }
 
@@ -158,29 +208,43 @@ final class DayDreamTextView: NSTextView {
     private func refreshInlineVisuals(in range: NSRange) {
         guard let storage = textStorage, range.length > 0 else { return }
         let appearance = effectiveAppearance
-        var styled: [(range: NSRange, style: InlineStyle, kind: MarkdownBlockKind)] = []
+        var styled: [(range: NSRange, style: InlineStyle, kind: MarkdownBlockKind, indentation: String)] = []
+        // 高亮由 drawBackground 自定义绘制，避免系统整行高、直角背景。
+        storage.removeAttribute(.backgroundColor, range: range)
         storage.enumerateAttributes(in: range, options: []) { attributes, subrange, _ in
             let style = InlineStyle(
                 bold: attributes[.dayDreamBold] as? Bool ?? false,
                 italic: attributes[.dayDreamItalic] as? Bool ?? false,
+                code: attributes[.dayDreamInlineCode] as? Bool ?? false,
+                linkDestination: attributes[.dayDreamLink] as? String,
+                imageDestination: attributes[.dayDreamImage] as? String,
                 textColor: attributes[.dayDreamTextColor] as? String,
-                highlight: attributes[.dayDreamHighlight] as? String
+                highlight: attributes[.dayDreamHighlight] as? String,
+                fontFamily: attributes[.dayDreamFontFamily] as? String
             )
             guard !style.isPlain else { return }
             let kind = attributes[.dayDreamBlockKind] as? MarkdownBlockKind ?? .body
-            styled.append((subrange, style, kind))
+            let indentation = attributes[.dayDreamListIndentation] as? String ?? ""
+            styled.append((subrange, style, kind, indentation))
         }
         for item in styled {
             let base = DayDreamTheme.textAttributes(
-                for: appearance, scale: zoomScale, blockKind: item.kind
+                for: appearance,
+                scale: zoomScale,
+                blockKind: item.kind,
+                listIndentation: item.indentation
             )
             storage.addAttributes(
                 DayDreamTheme.inlineStyledAttributes(
                     base: base,
                     bold: item.style.bold,
                     italic: item.style.italic,
+                    inlineCode: item.style.code,
+                    linkDestination: item.style.linkDestination,
+                    imageDestination: item.style.imageDestination,
                     textColorName: item.style.textColor,
                     highlightName: item.style.highlight,
+                    fontFamily: item.style.fontFamily,
                     for: appearance
                 ),
                 range: item.range
@@ -192,11 +256,15 @@ final class DayDreamTextView: NSTextView {
     private func applySpaceWidth(in range: NSRange) {
         guard let storage = textStorage, range.length > 0 else { return }
         let extra = EditorSettings.shared.spaceWidth * zoomScale
-        guard extra > 0 else { return }
+        guard extra != 0 else { return }
         let widened = DayDreamTheme.letterSpacing * zoomScale + extra
         let value = storage.string as NSString
+        let safeRange = NSIntersectionRange(range, NSRange(location: 0, length: value.length))
+        guard safeRange.length > 0 else { return }
+        isApplyingSpaceWidth = true
+        defer { isApplyingSpaceWidth = false }
         storage.beginEditing()
-        for index in range.location..<NSMaxRange(range) {
+        for index in safeRange.location..<NSMaxRange(safeRange) {
             if value.character(at: index) == 32 { // 空格
                 storage.addAttribute(.kern, value: widened, range: NSRange(location: index, length: 1))
             }
@@ -205,27 +273,36 @@ final class DayDreamTextView: NSTextView {
     }
 
     /// 重建指定范围的段落基础属性 + 行内样式 + 空格宽度（工具条改动后调用）。
-    private func rebuildAttributes(in range: NSRange) {
+    func rebuildAttributes(in range: NSRange) {
         guard let storage = textStorage, storage.length > 0 else { return }
         let value = storage.string as NSString
-        let paragraphRange = value.paragraphRange(for: range)
-        let kind = currentBlockKind(at: paragraphRange.location)
-        storage.addAttributes(
-            DayDreamTheme.textAttributes(for: effectiveAppearance, scale: zoomScale, blockKind: kind),
-            range: paragraphRange
-        )
-        storage.addAttribute(.dayDreamBlockKind, value: kind, range: paragraphRange)
-        refreshInlineVisuals(in: paragraphRange)
-        applySpaceWidth(in: paragraphRange)
+        let paragraphs = value.paragraphRange(for: range)
+        var location = paragraphs.location
+        while location < NSMaxRange(paragraphs), location < storage.length {
+            let paragraph = value.paragraphRange(for: NSRange(location: location, length: 0))
+            let kind = currentBlockKind(at: location)
+            let indentation = currentListIndentation(at: location)
+            for key: NSAttributedString.Key in [.underlineStyle, .underlineColor, .strokeWidth, .obliqueness] {
+                storage.removeAttribute(key, range: paragraph)
+                layoutManager?.removeTemporaryAttribute(key, forCharacterRange: paragraph)
+            }
+            storage.addAttributes(DayDreamTheme.textAttributes(for: effectiveAppearance, scale: zoomScale,
+                blockKind: kind, listIndentation: indentation), range: paragraph)
+            refreshInlineVisuals(in: paragraph)
+            applySpaceWidth(in: paragraph)
+            location = NSMaxRange(paragraph)
+        }
         needsDisplay = true
     }
 
     // MARK: - 悬浮样式工具条
 
     private lazy var formatPanel = FormatPanel()
+    var isFormatPanelVisible: Bool { formatPanel.isVisible }
 
     func toggleBold() { toggleInlineFlag(.dayDreamBold) }
     func toggleItalic() { toggleInlineFlag(.dayDreamItalic) }
+    func toggleInlineCode() { toggleInlineFlag(.dayDreamInlineCode) }
     func toggleHighlight() {
         toggleInlineValue(.dayDreamHighlight, value: EditorSettings.shared.highlightPreset)
     }
@@ -235,100 +312,188 @@ final class DayDreamTextView: NSTextView {
 
     private func toggleInlineFlag(_ key: NSAttributedString.Key) {
         guard let storage = textStorage, selectedRange.length > 0 else { return }
-        let current = storage.attribute(key, at: selectedRange.location, effectiveRange: nil) as? Bool ?? false
-        if current {
+        registerStyleUndo()
+        let changedRange = selectedRange
+        let previousHighlightRects = highlightInvalidationRects(in: changedRange)
+        let isAppliedToWholeSelection = selectedRangeFullyMatches(key) { value in
+            value as? Bool == true
+        }
+        if isAppliedToWholeSelection {
             storage.removeAttribute(key, range: selectedRange)
         } else {
             storage.addAttribute(key, value: true, range: selectedRange)
         }
-        afterInlineStyleChange()
+        afterInlineStyleChange(
+            in: changedRange,
+            previousHighlightRects: previousHighlightRects
+        )
     }
 
     private func toggleInlineValue(_ key: NSAttributedString.Key, value: String) {
         guard let storage = textStorage, selectedRange.length > 0 else { return }
-        let current = storage.attribute(key, at: selectedRange.location, effectiveRange: nil) as? String
-        if current == value {
+        registerStyleUndo()
+        let changedRange = selectedRange
+        let previousHighlightRects = highlightInvalidationRects(in: changedRange)
+        let isAppliedToWholeSelection = selectedRangeFullyMatches(key) { current in
+            current as? String == value
+        }
+        if isAppliedToWholeSelection {
             storage.removeAttribute(key, range: selectedRange)
         } else {
             storage.addAttribute(key, value: value, range: selectedRange)
         }
-        afterInlineStyleChange()
+        afterInlineStyleChange(
+            in: changedRange,
+            previousHighlightRects: previousHighlightRects
+        )
     }
 
-    private func afterInlineStyleChange() {
-        rebuildAttributes(in: selectedRange)
-        notifyMarkdownChange()
-    }
-
-    private func showFormatPanel() {
-        guard selectedRange.length > 0, window != nil else { return }
-        let rect = firstRect(forCharacterRange: selectedRange, actualRange: nil)
-        guard !rect.isNull, rect.size.height > 0 else { return }
-        formatPanel.onAction = { [weak self] action in
-            switch action {
-            case .bold: self?.toggleBold()
-            case .italic: self?.toggleItalic()
-            case .highlight: self?.toggleHighlight()
-            case .textColor: self?.toggleTextColor()
-            }
+    private func selectedRangeFullyMatches(
+        _ key: NSAttributedString.Key,
+        predicate: (Any?) -> Bool
+    ) -> Bool {
+        guard let storage = textStorage, selectedRange.length > 0 else { return false }
+        var matches = true
+        storage.enumerateAttribute(key, in: selectedRange) { value, _, stop in
+            guard !predicate(value) else { return }
+            matches = false
+            stop.pointee = true
         }
-        formatPanel.show(above: rect)
+        return matches
     }
 
-    private func hideFormatPanel() {
+    private func afterInlineStyleChange(
+        in changedRange: NSRange,
+        previousHighlightRects: [NSRect]
+    ) {
+        rebuildAttributes(in: changedRange)
+        layoutManager?.invalidateDisplay(forCharacterRange: changedRange)
+        let currentHighlightRects = highlightInvalidationRects(in: changedRange)
+        for rect in previousHighlightRects + currentHighlightRects {
+            setNeedsDisplay(rect)
+        }
+        // 工具条位于独立的非激活面板，不能依赖下一次编辑器事件触发刷新。
+        // 立即提交本轮无效区域，避免取消高亮后留下底部的一条旧像素。
+        if window?.isVisible == true {
+            displayIfNeeded()
+        }
+        notifyMarkdownChange()
+        hideFormatPanel()
+    }
+
+    private func highlightInvalidationRects(in range: NSRange) -> [NSRect] {
+        InlineHighlightLayout.invalidationRects(
+            for: inlineHighlightFragments(),
+            intersecting: range
+        )
+    }
+
+
+    func hideFormatPanel() {
         formatPanel.hide()
     }
 
     func load(markdown: String) {
+        stopRetype(restoreSelection: false)
+        resetWritingStyle()
+        (layoutManager as? TypingLayoutManager)?.clearReveals()
+        mediaViews.values.forEach { $0.removeFromSuperview() }
+        mediaViews.removeAll()
+        textContainer?.exclusionPaths = []
         closeSlashCommandMenu()
+        pendingMarkdownNotification?.cancel()
+        pendingMarkdownNotification = nil
+        markdownNotificationGeneration += 1
         isLoadingDocument = true
+        sourcePreservation = nil
         let document = MarkdownDocumentCodec.parse(markdown)
+        trailingBlockKind = document.blocks.last?.kind ?? .body
+        trailingListIndentation = document.blocks.last?.indentation ?? ""
+        trailingOrderedStart = document.blocks.last?.orderedStart ?? 1
         let value = MarkdownTextStorage.attributedString(
             from: document,
             appearance: effectiveAppearance,
             scale: zoomScale
         )
         textStorage?.setAttributedString(value)
+        focusTextRevision += 1
+        focusedSentenceRange = nil
+        isFocusAppearanceApplied = false
         if let storage = textStorage, storage.length > 0 {
             applySpaceWidth(in: NSRange(location: 0, length: storage.length))
         }
         setSelectedRange(NSRange(location: value.length, length: 0))
         let lastKind = document.blocks.last?.kind ?? .body
-        setTypingAttributes(for: lastKind)
+        setTypingAttributes(for: lastKind, listIndentation: document.blocks.last?.indentation ?? "")
+        typingAttributes[.dayDreamOrderedStart] = document.blocks.last?.orderedStart ?? 1
+        sourcePreservation = SourcePreservingMarkdown(
+            original: markdown,
+            canonicalBaseline: canonicalMarkdown()
+        )
         isLoadingDocument = false
+        mostRecentEditChangedCharacters = false
+        updateFocusAppearance()
+        updateWordCompletion()
         updateCaret(animated: false)
+        wordCountDidChange?(WordCounter.count(string))
+        refreshMediaCards()
     }
 
     func exportMarkdown() -> String {
+        let canonical = canonicalMarkdown()
+        return sourcePreservation?.merge(canonicalCurrent: canonical) ?? canonical
+    }
+
+    private func canonicalMarkdown() -> String {
         guard let storage = textStorage else { return "" }
         return MarkdownDocumentCodec.serialize(
             MarkdownTextStorage.document(
                 from: storage,
-                fallbackKind: currentBlockKind(at: selectedRange.location)
+                fallbackKind: trailingBlockKind,
+                fallbackIndentation: trailingListIndentation,
+                fallbackOrderedStart: trailingOrderedStart
             )
         )
     }
 
     func currentBlockKind(at location: Int) -> MarkdownBlockKind {
         guard let storage = textStorage, storage.length > 0 else {
-            return typingAttributes[.dayDreamBlockKind] as? MarkdownBlockKind ?? .body
+            return trailingBlockKind
         }
         if location >= storage.length, storage.string.last?.isNewline == true {
-            return typingAttributes[.dayDreamBlockKind] as? MarkdownBlockKind ?? .body
+            return trailingBlockKind
         }
         let index = min(max(location, 0), storage.length - 1)
         return storage.attribute(.dayDreamBlockKind, at: index, effectiveRange: nil)
             as? MarkdownBlockKind ?? .body
     }
 
-    func setTypingAttributes(for kind: MarkdownBlockKind) {
+    func currentListIndentation(at location: Int) -> String {
+        guard let storage = textStorage, storage.length > 0 else {
+            return trailingListIndentation
+        }
+        if location >= storage.length, storage.string.last?.isNewline == true {
+            return trailingListIndentation
+        }
+        let index = min(max(location, 0), storage.length - 1)
+        return storage.attribute(.dayDreamListIndentation, at: index, effectiveRange: nil) as? String ?? ""
+    }
+
+    func setTypingAttributes(for kind: MarkdownBlockKind, listIndentation: String = "") {
+        let indentation = kind.isList ? listIndentation : ""
         var attributes = DayDreamTheme.textAttributes(
             for: effectiveAppearance,
             scale: zoomScale,
-            blockKind: kind
+            blockKind: kind,
+            listIndentation: indentation
         )
         attributes[.dayDreamBlockKind] = kind
-        typingAttributes = attributes
+        attributes[.dayDreamListIndentation] = indentation
+        let location = selectedRange.location
+        if let storage = textStorage, location < storage.length {
+            attributes[.dayDreamOrderedStart] = storage.attribute(.dayDreamOrderedStart, at: location, effectiveRange: nil) as? Int ?? 1
+        } else { attributes[.dayDreamOrderedStart] = typingAttributes[.dayDreamOrderedStart] ?? 1 }
+        typingAttributes = writingAttributes(base: attributes)
     }
 
     /// - Parameter updatesTypingAttributes: 是否同步更新打字属性。
@@ -338,7 +503,8 @@ final class DayDreamTextView: NSTextView {
     func applyBlockKind(
         _ kind: MarkdownBlockKind,
         at location: Int,
-        updatesTypingAttributes: Bool = true
+        updatesTypingAttributes: Bool = true,
+        listIndentation: String? = nil
     ) {
         guard let storage = textStorage else { return }
         let value = storage.string as NSString
@@ -351,41 +517,76 @@ final class DayDreamTextView: NSTextView {
             location: paragraphRange.location,
             length: min(paragraphRange.length, availableLength)
         )
+        let indentation = kind.isList
+            ? (listIndentation ?? currentListIndentation(at: safeLocation))
+            : ""
         if attributedRange.length > 0 {
             storage.addAttributes(
                 DayDreamTheme.textAttributes(
                     for: effectiveAppearance,
                     scale: zoomScale,
-                    blockKind: kind
+                    blockKind: kind,
+                    listIndentation: indentation
                 ),
                 range: attributedRange
             )
             storage.addAttribute(.dayDreamBlockKind, value: kind, range: attributedRange)
+            storage.addAttribute(.dayDreamListIndentation, value: indentation, range: attributedRange)
+        }
+        if safeLocation == storage.length && (storage.length == 0 || string.last?.isNewline == true) {
+            trailingBlockKind = kind
+            trailingListIndentation = indentation
         }
         if updatesTypingAttributes {
-            setTypingAttributes(for: kind)
+            setTypingAttributes(for: kind, listIndentation: indentation)
         }
-        needsDisplay = true
+        requestDisplayCommit()
     }
 
-    private func notifyMarkdownChange() {
+    func notifyMarkdownChange() {
         guard !isLoadingDocument else { return }
+        pendingMarkdownNotification?.cancel()
+        markdownNotificationGeneration += 1
+        let generation = markdownNotificationGeneration
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  generation == self.markdownNotificationGeneration else { return }
+            self.pendingMarkdownNotification = nil
+            self.markdownDidChange?(self.exportMarkdown())
+        }
+        pendingMarkdownNotification = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + markdownNotificationDelay,
+            execute: workItem
+        )
+    }
+
+    /// 在切换文档、退出或显式保存前同步提交尚未触发的防抖通知。
+    func flushPendingMarkdownChange() {
+        guard pendingMarkdownNotification != nil else { return }
+        pendingMarkdownNotification?.cancel()
+        pendingMarkdownNotification = nil
+        markdownNotificationGeneration += 1
         markdownDidChange?(exportMarkdown())
     }
 
     private func updateTypingAttributesForSelection() {
-        setTypingAttributes(for: currentBlockKind(at: selectedRange.location))
+        setTypingAttributes(
+            for: currentBlockKind(at: selectedRange.location),
+            listIndentation: currentListIndentation(at: selectedRange.location)
+        )
     }
 
-    private func updatePageInsets() {
+    func updatePageInsets() {
         let centeredInset = max((bounds.width - maximumContentWidth) / 2, 0)
         textContainerInset = NSSize(
             width: max(minimumHorizontalInset * zoomScale, centeredInset),
-            height: verticalInset * zoomScale
+            height: isUltraFocus ? max(verticalInset * zoomScale, (enclosingScrollView?.contentSize.height ?? 0) / 2 - 20) : verticalInset * zoomScale
         )
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if handleEditorShortcut(event) { return true }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard event.type == .keyDown,
               modifiers.subtracting(.shift) == .command else {
@@ -404,7 +605,33 @@ final class DayDreamTextView: NSTextView {
         }
     }
 
+    override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        let kind = currentBlockKind(at: affectedCharRange.location)
+        let indentation = currentListIndentation(at: affectedCharRange.location)
+        let start = typingAttributes[.dayDreamOrderedStart] as? Int ?? 1
+        guard super.shouldChangeText(in: affectedCharRange, replacementString: replacementString) else { return false }
+        if let replacementString, NSMaxRange(affectedCharRange) == string.utf16.count,
+           replacementString.isEmpty || replacementString.last?.isNewline == true {
+            trailingBlockKind = kind
+            trailingListIndentation = indentation
+            trailingOrderedStart = start
+        }
+        return true
+    }
+
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        dismissWritingBar()
+        defer { requestDisplayCommit() }
+        if retypeSession != nil {
+            handleRetypeInput((insertString as? String) ?? (insertString as? NSAttributedString)?.string ?? "")
+            return
+        }
+        if selectedRange.length == 0, currentBlockKind(at: selectedRange.location) == .divider,
+           (insertString as? String) != "\n", !hasMarkedText() {
+            doCommand(by: #selector(NSResponder.insertNewline(_:)))
+            insertText(insertString, replacementRange: selectedRange)
+            return
+        }
         let replacement = replacementRange.location == NSNotFound
             ? selectedRange
             : replacementRange
@@ -419,24 +646,64 @@ final class DayDreamTextView: NSTextView {
             textStorage?.replaceCharacters(in: trigger.replacementRange, with: "")
             setSelectedRange(NSRange(location: trigger.replacementRange.location, length: 0))
             applyBlockKind(trigger.kind, at: trigger.replacementRange.location)
+            setOrderedStart(trigger.orderedStart, at: trigger.replacementRange.location)
             didChangeText()
             return
         }
+        let input = (insertString as? String) ?? (insertString as? NSAttributedString)?.string ?? ""
+        let wasMarked = hasMarkedText()
+        let actualReplacement = wasMarked ? markedRange() : replacement
+        (layoutManager as? TypingLayoutManager)?.prepareForEdit(actualReplacement, insertedLength: input.utf16.count)
+        typingAttributes = writingAttributes(base: typingAttributes)
         super.insertText(insertString, replacementRange: replacementRange)
+        if !hasMarkedText(), input.utf16.count < 80 {
+            let end = selectedRange.location
+            let start = max(0, end - input.utf16.count)
+            (layoutManager as? TypingLayoutManager)?.reveal(NSRange(location: start, length: end - start))
+        }
         if !hasMarkedText(), (insertString as? String) == "/", currentParagraphText == "/" {
             openSlashCommandMenu()
-        } else if isSlashCommandMenuOpen {
-            closeSlashCommandMenu()
+        } else if isSlashCommandMenuOpen, !hasMarkedText() {
+            refreshSlashCommandMenu()
         }
     }
 
     override func doCommand(by selector: Selector) {
+        dismissWritingBar()
+        defer { requestDisplayCommit() }
+        if retypeSession != nil {
+            if selector == #selector(NSResponder.cancelOperation(_:)) { stopRetype() }
+            else if selector == #selector(NSResponder.deleteBackward(_:)) { retypeSession?.backspace(); updateRetypeAppearance() }
+            else if selector == #selector(NSResponder.insertNewline(_:)) || selector == #selector(NSResponder.insertTab(_:)) { handleRetypeInput(" ") }
+            return
+        }
+        (layoutManager as? TypingLayoutManager)?.clearReveals()
+        if !hasMarkedText(), currentBlockKind(at: selectedRange.location).isList,
+           selector == #selector(NSResponder.insertTab(_:)) || selector == #selector(NSResponder.insertBacktab(_:)) {
+            let backwards = selector == #selector(NSResponder.insertBacktab(_:))
+            if selectedRange.length == 0, isAtStartOfCurrentParagraph,
+               changeCurrentListIndentation(by: backwards ? -1 : 1) { return }
+            if !backwards { super.insertText("\t", replacementRange: selectedRange) }
+            else if selectedRange.location > 0,
+                    (string as NSString).substring(with: NSRange(location: selectedRange.location - 1, length: 1)) == "\t" {
+                super.doCommand(by: #selector(NSResponder.deleteBackward(_:)))
+            }
+            return
+        }
+        if selector == #selector(NSResponder.insertTab(_:)),
+           !hasMarkedText(), selectedRange.length == 0,
+           let suffix = completionSuffix {
+            completionSuffix = nil
+            super.insertText(suffix, replacementRange: selectedRange)
+            return
+        }
+
         if selector == #selector(NSResponder.deleteBackward(_:)),
            !hasMarkedText(),
            selectedRange.length == 0 {
             if isSlashCommandMenuOpen {
-                closeSlashCommandMenu()
                 super.doCommand(by: selector)
+                refreshSlashCommandMenu()
                 return
             }
 
@@ -458,7 +725,7 @@ final class DayDreamTextView: NSTextView {
                 moveSlashSelection(by: 1)
                 return
             case #selector(NSResponder.insertNewline(_:)):
-                let commands = SlashCommandCatalog.all
+                let commands = filteredSlashCommands
                 guard commands.indices.contains(selectedSlashCommandIndex) else { return }
                 applySlashCommand(commands[selectedSlashCommandIndex].kind)
                 return
@@ -479,6 +746,7 @@ final class DayDreamTextView: NSTextView {
         }
 
         let kind = currentBlockKind(at: selectedRange.location)
+        let indentation = currentListIndentation(at: selectedRange.location)
         guard kind != .body else {
             super.doCommand(by: selector)
             return
@@ -493,9 +761,41 @@ final class DayDreamTextView: NSTextView {
             return
         }
 
+        let nextOrdinal = kind == .numbered ? BlockDecorationLayout.numberedOrdinal(in: textStorage ?? NSTextStorage(), paragraphLocation: selectedRange.location) + 1 : 1
         super.doCommand(by: selector)
-        applyBlockKind(nextKind, at: selectedRange.location)
+        applyBlockKind(nextKind, at: selectedRange.location, listIndentation: indentation)
+        setOrderedStart(nextOrdinal, at: selectedRange.location)
         notifyMarkdownChange()
+    }
+
+    private func changeCurrentListIndentation(by delta: Int) -> Bool {
+        let location = selectedRange.location
+        let kind = currentBlockKind(at: location)
+        guard kind == .numbered, isAtStartOfCurrentParagraph else { return false }
+
+        var indentation = currentListIndentation(at: location)
+        if delta > 0 {
+            indentation += "  "
+        } else if indentation.hasSuffix("  ") {
+            indentation.removeLast(2)
+        } else if !indentation.isEmpty {
+            indentation.removeLast()
+        } else {
+            return true
+        }
+        applyBlockKind(kind, at: location, listIndentation: indentation)
+        setOrderedStart(1, at: location)
+        notifyMarkdownChange()
+        return true
+    }
+
+    var filteredSlashCommands: [SlashCommand] {
+        SlashCommandCatalog.matching(String(currentParagraphText.dropFirst()))
+    }
+
+    private func refreshSlashCommandMenu() {
+        guard currentParagraphText.hasPrefix("/") else { closeSlashCommandMenu(); return }
+        openSlashCommandMenu()
     }
 
     private func openSlashCommandMenu() {
@@ -504,7 +804,7 @@ final class DayDreamTextView: NSTextView {
         guard window != nil else { return }
         let anchor = firstRect(forCharacterRange: selectedRange, actualRange: nil)
         slashPanel.show(
-            commands: SlashCommandCatalog.all,
+            commands: filteredSlashCommands,
             selectedIndex: selectedSlashCommandIndex,
             screenAnchor: anchor,
             onDismiss: { [weak self] in
@@ -519,7 +819,7 @@ final class DayDreamTextView: NSTextView {
         selectedSlashCommandIndex = SlashCommandNavigation.moved(
             from: selectedSlashCommandIndex,
             by: delta,
-            count: SlashCommandCatalog.all.count
+            count: filteredSlashCommands.count
         )
         slashPanel.updateSelection(selectedSlashCommandIndex)
     }
@@ -532,11 +832,11 @@ final class DayDreamTextView: NSTextView {
             for: NSRange(location: location, length: 0)
         )
         let paragraph = value.substring(with: paragraphRange).trimmingCharacters(in: .newlines)
-        guard paragraph == "/" else {
+        guard paragraph.hasPrefix("/") else {
             closeSlashCommandMenu()
             return
         }
-        let slashRange = NSRange(location: paragraphRange.location, length: 1)
+        let slashRange = NSRange(location: paragraphRange.location, length: paragraph.utf16.count)
         closeSlashCommandMenu()
         guard shouldChangeText(in: slashRange, replacementString: "") else { return }
         textStorage?.replaceCharacters(in: slashRange, with: "")
@@ -545,7 +845,7 @@ final class DayDreamTextView: NSTextView {
         didChangeText()
     }
 
-    private func closeSlashCommandMenu() {
+    func closeSlashCommandMenu() {
         guard isSlashCommandMenuOpen || slashPanel.isVisible else { return }
         isSlashCommandMenuOpen = false
         slashPanel.closePanel()
@@ -667,7 +967,7 @@ final class DayDreamTextView: NSTextView {
     // MARK: - 光标定位
 
     /// 计算插入点在视图坐标系中的位置。
-    private func currentCaretRect() -> NSRect? {
+    func currentCaretRect() -> NSRect? {
         guard selectedRange.length == 0,
               let window,
               window.firstResponder == self else { return nil }
@@ -793,10 +1093,17 @@ final class DayDreamTextView: NSTextView {
 
     // MARK: - 绘制
 
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        drawInlineHighlights(in: rect)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        (layoutManager as? TypingLayoutManager)?.drawFallingCopies(at: textContainerOrigin)
         drawBlockDecorations(in: dirtyRect)
         drawHeadingPlaceholder(in: dirtyRect)
+        drawWordCompletion(in: dirtyRect)
         guard let rect = caretRect, caretAlpha > 0 else { return }
         DayDreamTheme.caret(for: effectiveAppearance)
             .withAlphaComponent(caretAlpha)
@@ -804,6 +1111,99 @@ final class DayDreamTextView: NSTextView {
         NSBezierPath(roundedRect: rect,
                      xRadius: rect.width / 2,
                      yRadius: rect.width / 2).fill()
+    }
+
+    func inlineHighlightFragments() -> [InlineHighlightFragment] {
+        guard let storage = textStorage,
+              storage.length > 0,
+              let layoutManager,
+              let textContainer else { return [] }
+        let resolvedVisibleRect = visibleRect
+        let drawingRect = resolvedVisibleRect.width.isFinite
+            && resolvedVisibleRect.height.isFinite
+            && resolvedVisibleRect.width <= max(bounds.width * 4, 1)
+            && resolvedVisibleRect.height <= max(bounds.height * 4, 1)
+            ? resolvedVisibleRect
+            : bounds
+        let containerRect = drawingRect.offsetBy(
+            dx: -textContainerOrigin.x,
+            dy: -textContainerOrigin.y
+        )
+        layoutManager.ensureLayout(forBoundingRect: containerRect, in: textContainer)
+
+        var fragments: [InlineHighlightFragment] = []
+        let visibleGlyphRange = layoutManager.glyphRange(
+            forBoundingRect: containerRect,
+            in: textContainer
+        )
+        let visibleCharacterRange = layoutManager.characterRange(
+            forGlyphRange: visibleGlyphRange,
+            actualGlyphRange: nil
+        )
+        let safeRange = NSIntersectionRange(
+            visibleCharacterRange,
+            NSRange(location: 0, length: storage.length)
+        )
+        guard safeRange.length > 0 else { return [] }
+        storage.enumerateAttribute(.dayDreamHighlight, in: safeRange) { value, characterRange, _ in
+            guard let preset = value as? String, characterRange.length > 0 else { return }
+            let glyphRange = layoutManager.glyphRange(
+                forCharacterRange: characterRange,
+                actualCharacterRange: nil
+            )
+            layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) {
+                lineRect, _, container, lineGlyphRange, _ in
+                let fragmentGlyphRange = NSIntersectionRange(glyphRange, lineGlyphRange)
+                guard fragmentGlyphRange.length > 0 else { return }
+                let characterIndex = layoutManager.characterIndexForGlyph(
+                    at: fragmentGlyphRange.location
+                )
+                let font = storage.attribute(
+                    .font,
+                    at: min(characterIndex, storage.length - 1),
+                    effectiveRange: nil
+                ) as? NSFont ?? DayDreamTheme.font
+                let glyphBounds = layoutManager.boundingRect(
+                    forGlyphRange: fragmentGlyphRange,
+                    in: container
+                )
+                let glyphLocation = layoutManager.location(forGlyphAt: fragmentGlyphRange.location)
+                let baseline = self.textContainerOrigin.y + lineRect.minY + glyphLocation.y
+                let fragmentCharacterRange = layoutManager.characterRange(
+                    forGlyphRange: fragmentGlyphRange,
+                    actualGlyphRange: nil
+                )
+                fragments.append(InlineHighlightFragment(
+                    preset: preset,
+                    characterRange: fragmentCharacterRange,
+                    rect: NSRect(
+                        x: self.textContainerOrigin.x + glyphBounds.minX,
+                        y: baseline - font.ascender,
+                        width: glyphBounds.width,
+                        height: font.ascender - font.descender
+                    )
+                ))
+            }
+        }
+
+        let maximumJoinGap = DayDreamTheme.baseFontSize * zoomScale * 0.8
+        return InlineHighlightLayout.join(
+            fragments,
+            maximumGap: maximumJoinGap,
+            text: storage.string as NSString
+        )
+    }
+
+    private func drawInlineHighlights(in dirtyRect: NSRect) {
+        for fragment in inlineHighlightFragments() where fragment.rect.intersects(dirtyRect) {
+            DayDreamTheme.inlineHighlightColor(fragment.preset, for: effectiveAppearance).setFill()
+            let radius = min(4 * zoomScale, fragment.rect.height / 4)
+            NSBezierPath(
+                roundedRect: fragment.rect,
+                xRadius: radius,
+                yRadius: radius
+            ).fill()
+        }
     }
 
     private func drawBlockDecorations(in dirtyRect: NSRect) {
@@ -815,12 +1215,34 @@ final class DayDreamTextView: NSTextView {
         let color = DayDreamTheme.text(for: effectiveAppearance).withAlphaComponent(0.72)
 
         for decoration in decorations where decoration.markerRect.intersects(dirtyRect) {
+            if decoration.kind == .divider {
+                NSColor.separatorColor.setFill()
+                NSBezierPath(rect: decoration.markerRect).fill()
+                continue
+            }
+            if decoration.kind == .quote {
+                DayDreamTheme.caret(for: effectiveAppearance)
+                    .withAlphaComponent(0.42)
+                    .setFill()
+                NSBezierPath(
+                    roundedRect: decoration.markerRect,
+                    xRadius: decoration.markerRect.width / 2,
+                    yRadius: decoration.markerRect.width / 2
+                ).fill()
+                continue
+            }
             if let label = decoration.label {
                 let paragraph = NSMutableParagraphStyle()
                 // 序号右对齐贴近文字（长序号向左侧缩进区溢出），圆点居中。
                 paragraph.alignment = decoration.kind == .numbered ? .right : .center
+                var markerRect = decoration.markerRect
+                let width = (label as NSString).size(withAttributes: [.font: BlockDecorationLayout.markerFont(scale: zoomScale)]).width + 2
+                if decoration.kind == .numbered && width > markerRect.width {
+                    markerRect.origin.x -= width - markerRect.width
+                    markerRect.size.width = width
+                }
                 (label as NSString).draw(
-                    in: decoration.markerRect,
+                    in: markerRect,
                     withAttributes: [
                         .font: BlockDecorationLayout.markerFont(scale: zoomScale),
                         .foregroundColor: color,
@@ -946,6 +1368,9 @@ final class DayDreamTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        dismissWritingBar()
+        defer { requestDisplayCommit() }
+        if retypeSession != nil { window?.makeFirstResponder(self); return }
         closeSlashCommandMenu()
         hideFormatPanel()
         let point = convert(event.locationInWindow, from: nil)
@@ -956,40 +1381,46 @@ final class DayDreamTextView: NSTextView {
     // MARK: - 光标需要更新的时机
 
     override func didChangeText() {
+        defer { requestDisplayCommit() }
         super.didChangeText()
+        focusTextRevision += 1
+        wordCountDidChange?(WordCounter.count(string))
+        refreshMediaCards()
+        centerUltraFocusCaret()
         notifyMarkdownChange()
-        hideFormatPanel()
-        // 新输入/粘贴的内容里，空格需要补上加宽的词距。
-        let value = string as NSString
-        if let editRange = textStorage?.editedRange,
-           editRange.location != NSNotFound,
-           editRange.location <= value.length {
-            let safeRange = NSRange(
-                location: editRange.location,
-                length: min(editRange.length, value.length - editRange.location)
-            )
-            applySpaceWidth(in: value.paragraphRange(for: safeRange))
+        if mostRecentEditChangedCharacters {
+            hideFormatPanel()
         }
+        mostRecentEditChangedCharacters = false
+        updateFocusAppearance()
+        updateWordCompletion()
         updateCaret(animated: true)
     }
 
     override func setSelectedRange(_ charRange: NSRange,
                                    affinity: NSSelectionAffinity,
                                    stillSelecting stillSelectingFlag: Bool) {
-        super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelectingFlag)
+        let range = retypeSession.map { NSRange(location: $0.location, length: 0) } ?? charRange
+        super.setSelectedRange(range, affinity: affinity, stillSelecting: stillSelectingFlag)
         updateTypingAttributesForSelection()
+        updateFocusAppearance()
+        updateWordCompletion()
+        requestDisplayCommit()
         updateCaret(animated: !stillSelectingFlag)
+        centerUltraFocusCaret()
         // 拖选完成后浮现样式工具条；开始拖选或取消选区时隐藏。
         if stillSelectingFlag || selectedRange.length == 0 {
             hideFormatPanel()
         } else {
-            showFormatPanel()
+            hideFormatPanel()
         }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updatePageInsets()
+        refreshMediaCards()
+        centerUltraFocusCaret()
         // 窗口缩放导致文字重排，光标直接落位。
         updateCaret(animated: false)
     }
@@ -998,23 +1429,174 @@ final class DayDreamTextView: NSTextView {
         let ok = super.becomeFirstResponder()
         if ok {
             updateCaret(animated: true)
+            updateFocusAppearance()
+            updateWordCompletion()
             onBecameFirstResponder?()
         }
         return ok
     }
 
     override func resignFirstResponder() -> Bool {
+        dismissWritingBar()
         let ok = super.resignFirstResponder()
-        if ok { updateCaret(animated: true) }
+        if ok {
+            completionSuffix = nil
+            updateCaret(animated: true)
+            needsDisplay = true
+        }
         return ok
     }
 
     @objc private func settingsDidChange() {
+        defer { requestDisplayCommit() }
+        isAutomaticSpellingCorrectionEnabled = retypeSession == nil && EditorSettings.shared.automaticSpellingCorrectionEnabled
+        isContinuousSpellCheckingEnabled = retypeSession == nil && EditorSettings.shared.automaticSpellingCorrectionEnabled
         applyTheme()
+        if !EditorSettings.shared.typingAnimationEnabled { (layoutManager as? TypingLayoutManager)?.clearReveals() }
+        updateFocusAppearance()
+        updateWordCompletion()
         if let textContainer {
             layoutManager?.ensureLayout(for: textContainer)
         }
         updateCaret(animated: false)
+    }
+
+    // MARK: - 专注模式与单词补全
+
+    func updateFocusAppearance() {
+        if retypeSession != nil { applyRetypeColors(); return }
+        guard let storage = textStorage, let layoutManager else { return }
+        let fullRange = NSRange(location: 0, length: storage.length)
+        if EditorSettings.shared.focusModeEnabled,
+           isFocusAppearanceApplied,
+           resolvedFocusTextRevision == focusTextRevision,
+           let focusedSentenceRange,
+           NSLocationInRange(selectedRange.location, focusedSentenceRange)
+            || selectedRange.location == NSMaxRange(focusedSentenceRange) {
+            return
+        }
+        guard EditorSettings.shared.focusModeEnabled,
+              storage.length > 0,
+              let activeRange = FocusSentenceResolver.range(
+                  in: storage.string,
+                  caretLocation: selectedRange.location
+              ) else {
+            if isFocusAppearanceApplied {
+                layoutManager.removeTemporaryAttribute(
+                    .foregroundColor,
+                    forCharacterRange: fullRange
+                )
+            }
+            focusedSentenceRange = nil
+            isFocusAppearanceApplied = false
+            resolvedFocusTextRevision = focusTextRevision
+            needsDisplay = true
+            return
+        }
+
+        let dimColor = DayDreamTheme.text(for: effectiveAppearance).withAlphaComponent(0.24)
+        if !isFocusAppearanceApplied {
+            layoutManager.addTemporaryAttribute(
+                .foregroundColor,
+                value: dimColor,
+                forCharacterRange: fullRange
+            )
+            layoutManager.removeTemporaryAttribute(
+                .foregroundColor,
+                forCharacterRange: activeRange
+            )
+            focusedSentenceRange = activeRange
+            isFocusAppearanceApplied = true
+        } else if focusedSentenceRange != activeRange {
+            if let previous = focusedSentenceRange {
+                let safePrevious = NSIntersectionRange(previous, fullRange)
+                if safePrevious.length > 0 {
+                    layoutManager.addTemporaryAttribute(
+                        .foregroundColor,
+                        value: dimColor,
+                        forCharacterRange: safePrevious
+                    )
+                }
+            }
+            let safeActive = NSIntersectionRange(activeRange, fullRange)
+            layoutManager.addTemporaryAttribute(
+                .foregroundColor,
+                value: dimColor,
+                forCharacterRange: safeActive
+            )
+            layoutManager.removeTemporaryAttribute(
+                .foregroundColor,
+                forCharacterRange: safeActive
+            )
+            focusedSentenceRange = activeRange
+        }
+        resolvedFocusTextRevision = focusTextRevision
+        needsDisplay = true
+    }
+
+    func resetFocusAppearance() {
+        if isFocusAppearanceApplied,
+           let storage = textStorage,
+           let layoutManager,
+           storage.length > 0 {
+            layoutManager.removeTemporaryAttribute(
+                .foregroundColor,
+                forCharacterRange: NSRange(location: 0, length: storage.length)
+            )
+        }
+        focusedSentenceRange = nil
+        isFocusAppearanceApplied = false
+        resolvedFocusTextRevision = -1
+    }
+
+    private func updateWordCompletion() {
+        completionSuffix = nil
+        guard retypeSession == nil, EditorSettings.shared.wordCompletionEnabled,
+              window?.firstResponder === self,
+              !hasMarkedText(),
+              selectedRange.length == 0,
+              !isSlashCommandMenuOpen,
+              !isCodeBlockAtSelection,
+              let partial = WordCompletionResolver.partialWord(
+                  in: string,
+                  caretLocation: selectedRange.location
+              ),
+              partial.word.count >= 2 else {
+            needsDisplay = true
+            return
+        }
+        let candidates = NSSpellChecker.shared.completions(
+            forPartialWordRange: partial.range,
+            in: string,
+            language: nil,
+            inSpellDocumentWithTag: 0
+        ) ?? []
+        completionSuffix = WordCompletionResolver.suffix(
+            partialWord: partial.word,
+            candidates: candidates
+        )
+        needsDisplay = true
+    }
+
+    private var isCodeBlockAtSelection: Bool {
+        if case .code = currentBlockKind(at: selectedRange.location) { return true }
+        return false
+    }
+
+    private func drawWordCompletion(in dirtyRect: NSRect) {
+        guard let suffix = completionSuffix,
+              let caret = currentCaretRect(),
+              caret.intersects(dirtyRect.insetBy(dx: -bounds.width, dy: -4)) else { return }
+        let activeFont = typingAttributes[.font] as? NSFont ?? font ?? DayDreamTheme.font
+        (suffix as NSString).draw(
+            at: NSPoint(x: caret.maxX + 1, y: caret.minY),
+            withAttributes: [
+                .font: activeFont,
+                .foregroundColor: DayDreamTheme.text(for: effectiveAppearance)
+                    .withAlphaComponent(0.25),
+                .kern: DayDreamTheme.letterSpacing * zoomScale,
+            ]
+        )
     }
 
     @objc private func windowKeyChanged() {
@@ -1026,13 +1608,97 @@ final class DayDreamTextView: NSTextView {
     }
 
     @objc private func clipBoundsChanged() {
+        centerUltraFocusCaret()
         hideFormatPanel()
     }
 
     deinit {
+        pendingMarkdownNotification?.cancel()
+        ultraScrollTimer?.invalidate()
+        writingBarPanel?.orderOut(nil)
         slashPanel.closePanel()
         formatPanel.hide()
         stopAnimation()
         NotificationCenter.default.removeObserver(self)
+    }
+}
+
+extension DayDreamTextView: NSTextStorageDelegate {
+    func textStorage(
+        _ textStorage: NSTextStorage,
+        didProcessEditing editedMask: NSTextStorageEditActions,
+        range editedRange: NSRange,
+        changeInLength delta: Int
+    ) {
+        guard !isApplyingSpaceWidth,
+              editedMask.contains(.editedCharacters),
+              editedRange.location != NSNotFound,
+              editedRange.location <= textStorage.length else { return }
+        mostRecentEditChangedCharacters = true
+        let value = textStorage.string as NSString
+        let safeRange = NSRange(
+            location: editedRange.location,
+            length: min(editedRange.length, value.length - editedRange.location)
+        )
+        applySpaceWidth(in: safeRange)
+    }
+}
+
+struct InlineHighlightFragment: Equatable {
+    let preset: String
+    var characterRange: NSRange
+    var rect: NSRect
+}
+
+enum InlineHighlightLayout {
+    static func invalidationRects(
+        for fragments: [InlineHighlightFragment],
+        intersecting range: NSRange
+    ) -> [NSRect] {
+        fragments.compactMap { fragment in
+            guard NSIntersectionRange(fragment.characterRange, range).length > 0 else {
+                return nil
+            }
+            return fragment.rect.insetBy(dx: -2, dy: -2)
+        }
+    }
+
+    static func join(
+        _ fragments: [InlineHighlightFragment],
+        maximumGap: CGFloat,
+        text: NSString
+    ) -> [InlineHighlightFragment] {
+        let sorted = fragments.sorted {
+            if abs($0.rect.minY - $1.rect.minY) > 1 { return $0.rect.minY < $1.rect.minY }
+            return $0.rect.minX < $1.rect.minX
+        }
+        var result: [InlineHighlightFragment] = []
+        for fragment in sorted {
+            if var previous = result.last,
+               previous.preset == fragment.preset,
+               abs(previous.rect.minY - fragment.rect.minY) <= 1,
+               abs(previous.rect.height - fragment.rect.height) <= 1,
+               gapIsOnlyWhitespace(from: previous.characterRange, to: fragment.characterRange, in: text),
+               fragment.rect.minX <= previous.rect.maxX + maximumGap {
+                previous.rect = previous.rect.union(fragment.rect)
+                previous.characterRange = NSUnionRange(previous.characterRange, fragment.characterRange)
+                result[result.count - 1] = previous
+            } else {
+                result.append(fragment)
+            }
+        }
+        return result
+    }
+
+    private static func gapIsOnlyWhitespace(
+        from first: NSRange,
+        to second: NSRange,
+        in text: NSString
+    ) -> Bool {
+        let start = NSMaxRange(first)
+        guard second.location >= start else { return true }
+        let gap = NSRange(location: start, length: second.location - start)
+        guard gap.length > 0 else { return true }
+        return text.substring(with: gap).allSatisfy(\.isWhitespace)
     }
 }

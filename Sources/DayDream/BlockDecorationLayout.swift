@@ -27,13 +27,21 @@ enum BlockDecorationLayout {
     }
     static func numberedOrdinal(
         in storage: NSAttributedString,
-        paragraphLocation: Int
+        paragraphLocation: Int,
+        trailingIndentation: String? = nil,
+        trailingStart: Int = 1
     ) -> Int {
-        guard storage.length > 0 else { return 1 }
+        guard storage.length > 0 else { return trailingStart }
         let value = storage.string as NSString
         let target = value.paragraphRange(
             for: NSRange(location: min(paragraphLocation, value.length), length: 0)
         ).location
+        let targetIndentation = (target == storage.length ? trailingIndentation : nil) ?? (storage.attribute(
+            .dayDreamListIndentation,
+            at: min(target, storage.length - 1),
+            effectiveRange: nil
+        ) as? String ?? "")
+        let targetColumns = DayDreamTheme.indentationColumns(targetIndentation)
         var ordinal = 1
         var location = target
 
@@ -48,11 +56,22 @@ enum BlockDecorationLayout {
                 at: min(previousLocation, storage.length - 1),
                 effectiveRange: nil
             ) as? MarkdownBlockKind ?? .body
-            guard kind == .numbered, previousLocation < location else { break }
-            ordinal += 1
+            guard kind.isList, previousLocation < location else { break }
+            let previousIndentation = storage.attribute(
+                .dayDreamListIndentation,
+                at: min(previousLocation, storage.length - 1),
+                effectiveRange: nil
+            ) as? String ?? ""
+            let previousColumns = DayDreamTheme.indentationColumns(previousIndentation)
+            if previousColumns < targetColumns { break }
+            if previousColumns == targetColumns {
+                guard kind == .numbered else { break }
+                ordinal += 1
+            }
             location = previousLocation
         }
-        return ordinal
+        let start = location == storage.length ? trailingStart : (storage.attribute(.dayDreamOrderedStart, at: location, effectiveRange: nil) as? Int ?? 1)
+        return ordinal + start - 1
     }
 
     @MainActor
@@ -65,10 +84,31 @@ enum BlockDecorationLayout {
               let layoutManager = textView.layoutManager,
               let textContainer = textView.textContainer else { return [] }
 
-        layoutManager.ensureLayout(for: textContainer)
+        let resolvedVisibleRect = textView.visibleRect
+        let drawingRect = resolvedVisibleRect.width.isFinite
+            && resolvedVisibleRect.height.isFinite
+            && resolvedVisibleRect.width <= max(textView.bounds.width * 4, 1)
+            && resolvedVisibleRect.height <= max(textView.bounds.height * 4, 1)
+            ? resolvedVisibleRect
+            : textView.bounds
+        let visibleRect = drawingRect.offsetBy(
+            dx: -textContainerOrigin.x,
+            dy: -textContainerOrigin.y
+        )
+        layoutManager.ensureLayout(forBoundingRect: visibleRect, in: textContainer)
         let value = storage.string as NSString
+        let glyphRange = layoutManager.glyphRange(
+            forBoundingRect: visibleRect,
+            in: textContainer
+        )
+        let visibleCharacterRange = layoutManager.characterRange(
+            forGlyphRange: glyphRange,
+            actualGlyphRange: nil
+        )
+        let scanRange = value.paragraphRange(for: visibleCharacterRange)
         var decorations: [BlockDecoration] = []
-        var location = 0
+        var location = min(scanRange.location, value.length)
+        let scanLimit = min(NSMaxRange(scanRange), value.length)
 
         while true {
             let paragraphRange = value.paragraphRange(
@@ -84,7 +124,12 @@ enum BlockDecorationLayout {
                 kind = .body
             }
 
-            if kind.isList {
+            let indentation: String
+            if let editor = textView as? DayDreamTextView { indentation = editor.currentListIndentation(at: location) }
+            else if location < storage.length { indentation = storage.attribute(.dayDreamListIndentation, at: location, effectiveRange: nil) as? String ?? "" }
+            else { indentation = "" }
+
+            if kind.isList || kind == .quote || kind == .divider {
                 let lineRect: NSRect
                 let baselineY: CGFloat
                 if location < storage.length {
@@ -102,23 +147,59 @@ enum BlockDecorationLayout {
                         ?? DayDreamTheme.font
                     baselineY = textContainerOrigin.y + lineRect.maxY + activeFont.descender
                 }
-                let markerSize = 18 * scale
-                let markerFont = markerFont(scale: scale)
-                let markerRect = NSRect(
-                    x: textContainerOrigin.x + lineRect.minX + 9 * scale,
-                    y: baselineY - markerFont.ascender,
-                    width: markerSize,
-                    height: markerSize
-                )
+                let markerRect: NSRect
+                if kind == .divider {
+                    markerRect = NSRect(x: textContainerOrigin.x, y: textContainerOrigin.y + lineRect.midY, width: textContainer.size.width, height: 1)
+                } else if kind == .quote {
+                    let availableRange = NSIntersectionRange(
+                        paragraphRange,
+                        NSRange(location: 0, length: storage.length)
+                    )
+                    let paragraphBounds: NSRect
+                    if availableRange.length > 0 {
+                        let glyphRange = layoutManager.glyphRange(
+                            forCharacterRange: availableRange,
+                            actualCharacterRange: nil
+                        )
+                        paragraphBounds = layoutManager.boundingRect(
+                            forGlyphRange: glyphRange,
+                            in: textContainer
+                        )
+                    } else {
+                        paragraphBounds = lineRect
+                    }
+                    markerRect = NSRect(
+                        x: textContainerOrigin.x + lineRect.minX + 4 * scale,
+                        y: textContainerOrigin.y + paragraphBounds.minY,
+                        width: 2.5 * scale,
+                        height: max(paragraphBounds.height, 18 * scale)
+                    )
+                } else {
+                    let markerSize = 18 * scale
+                    let markerFont = markerFont(scale: scale)
+                    markerRect = NSRect(
+                        x: textContainerOrigin.x + lineRect.minX + (9 + CGFloat(DayDreamTheme.indentationColumns(indentation)) * 12) * scale,
+                        y: baselineY - markerFont.ascender,
+                        width: markerSize,
+                        height: markerSize
+                    )
+                }
                 let label: String?
                 switch kind {
                 case .bullet:
                     label = "•"
                 case .numbered:
-                    label = "\(numberedOrdinal(in: storage, paragraphLocation: location))."
+                    let ordinal = numberedOrdinal(
+                        in: storage, paragraphLocation: location,
+                        trailingIndentation: indentation,
+                        trailingStart: (textView as? DayDreamTextView)?.trailingOrderedStart ?? 1
+                    )
+                    label = OrderedListMarker.label(ordinal: ordinal, indentation: indentation)
                 case .todo:
                     label = nil
-                case .body, .heading:
+                case .quote:
+                    label = nil
+                case .body, .heading, .code, .divider:
                     label = nil
                 }
                 decorations.append(BlockDecoration(
@@ -129,12 +210,23 @@ enum BlockDecorationLayout {
                 ))
             }
 
-            guard location < value.length else { break }
+            guard location < value.length, location < scanLimit else { break }
             let next = NSMaxRange(paragraphRange)
             guard next > location else { break }
             location = next
-            if location == value.length, !storage.string.hasSuffix("\n") { break }
+            if location >= scanLimit,
+               !(location == value.length && storage.string.hasSuffix("\n")) { break }
         }
-        return decorations
+        var joined: [BlockDecoration] = []
+        for decoration in decorations {
+            if decoration.kind == .quote, let previous = joined.last, previous.kind == .quote,
+               NSMaxRange(previous.characterRange) == decoration.characterRange.location {
+                joined.removeLast()
+                joined.append(BlockDecoration(kind: .quote,
+                    characterRange: NSUnionRange(previous.characterRange, decoration.characterRange),
+                    markerRect: previous.markerRect.union(decoration.markerRect), label: nil))
+            } else { joined.append(decoration) }
+        }
+        return joined
     }
 }

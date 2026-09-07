@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarRow: Equatable {
     let node: WorkspaceNode
@@ -40,6 +41,7 @@ struct SidebarView: View {
     @State private var hoveredURL: URL?
     /// 哪一行文件夹的「+」弹窗处于打开状态。
     @State private var folderAddMenuURL: URL?
+    @State private var pendingDeletion: WorkspaceNode?
     /// 拖拽悬停高亮的目标行。
     @State private var dropTargetURL: URL?
     @FocusState private var focusedEditingURL: URL?
@@ -72,6 +74,12 @@ struct SidebarView: View {
                     if let url {
                         withAnimation(.easeOut(duration: 0.12)) {
                             proxy.scrollTo(url, anchor: .center)
+                        }
+                        if shortcutCenter.isSidebarFocused,
+                           let row = rows.first(where: { $0.node.url == url }),
+                           row.node.kind == .note {
+                            store.select(url)
+                            onOpenNote?(url)
                         }
                     }
                 }
@@ -117,6 +125,29 @@ struct SidebarView: View {
         } message: {
             Text(store.errorMessage ?? "Unknown error")
         }
+        .alert(
+            L10n.t("删除这篇笔记？", "Delete this note?"),
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            )
+        ) {
+            Button(L10n.t("取消", "Cancel"), role: .cancel) {
+                pendingDeletion = nil
+            }
+            .keyboardShortcut(.cancelAction)
+            Button(L10n.t("删除", "Delete"), role: .destructive) {
+                guard let node = pendingDeletion else { return }
+                pendingDeletion = nil
+                deleteNode(node)
+            }
+            .keyboardShortcut(.defaultAction)
+        } message: {
+            Text(L10n.t(
+                "“\(pendingDeletion?.name ?? "")”将被移到废纸篓。",
+                "“\(pendingDeletion?.name ?? "")” will be moved to the Trash."
+            ))
+        }
     }
 
     private var header: some View {
@@ -147,6 +178,16 @@ struct SidebarView: View {
             }
 
             Spacer(minLength: 0)
+
+            Button(action: importDocument) {
+                DayDreamIcon(name: .importDocument, color: .secondary, strokeWidth: 1.65)
+                    .frame(width: 16, height: 16)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(L10n.t("导入 Markdown 或 Word", "Import Markdown or Word"))
+            .accessibilityLabel(L10n.t("导入", "Import"))
 
             Color.clear
                 .frame(width: 30, height: 30)
@@ -241,9 +282,14 @@ struct SidebarView: View {
                     DayDreamIcon(name: .chevronRight, color: .secondary, strokeWidth: 1.8)
                         .frame(width: 12, height: 12)
                         .rotationEffect(.degrees(expandedFolders.contains(row.node.url) ? 90 : 0))
-                        .frame(width: 16, height: 20)
+                        .frame(width: 28, height: 31)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, -6)
+                .accessibilityLabel(expandedFolders.contains(row.node.url)
+                    ? L10n.t("收起文件夹", "Collapse folder")
+                    : L10n.t("展开文件夹", "Expand folder"))
             } else {
                 Color.clear.frame(width: 16, height: 20)
             }
@@ -359,7 +405,8 @@ struct SidebarView: View {
             if let parent, parent.path != store.rootURL.path {
                 expandedFolders.insert(parent)
             }
-            try store.select(url)
+            store.select(url)
+            onOpenNote?(url)
             beginRename(url, currentName: url.deletingPathExtension().lastPathComponent)
         } catch {
             store.errorMessage = error.localizedDescription
@@ -379,8 +426,26 @@ struct SidebarView: View {
                 expandedFolders.insert(parent)
             }
             expandedFolders.insert(url)
-            try store.select(url)
+            store.select(url)
             beginRename(url, currentName: url.lastPathComponent)
+        } catch {
+            store.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func importDocument() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!, .init(filenameExtension: "docx")!]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = L10n.t("导入", "Import")
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+
+        do {
+            let url = try store.importDocument(from: source)
+            store.select(url)
+            onOpenNote?(url)
         } catch {
             store.errorMessage = error.localizedDescription
         }
@@ -570,7 +635,7 @@ struct SidebarView: View {
             }
         } else {
             selectNode(row.node)
-            exitSidebarNavigation()
+            shortcutCenter.toggleSidebar()
         }
     }
 
@@ -609,6 +674,13 @@ struct SidebarView: View {
             } catch {
                 store.errorMessage = error.localizedDescription
             }
+        }
+        shortcutCenter.deleteSelection = {
+            guard shortcutCenter.isSidebarFocused,
+                  let url = shortcutCenter.sidebarNavigationURL ?? store.selectedURL,
+                  let node = rows.first(where: { $0.node.url == url })?.node,
+                  node.kind == .note else { return }
+            pendingDeletion = node
         }
     }
 

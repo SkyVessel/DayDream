@@ -26,47 +26,71 @@ struct DayDreamApp: App {
 /// 快捷键菜单命令：动作由 WorkspaceView/SidebarView 注册到 ShortcutCenter。
 struct DayDreamCommands: Commands {
     @ObservedObject var center = ShortcutCenter.shared
-    @ObservedObject var settings = EditorSettings.shared
+    @ObservedObject var shortcuts = ShortcutPreferences.shared
 
     var body: some Commands {
-        // 替换 WindowGroup 默认的「新窗口」⌘N 与「关闭窗口」⌘W。
+        // 替换 WindowGroup 默认的「新窗口」⌘N；⌘W 保持系统关闭窗口行为。
         CommandGroup(replacing: .newItem) {
             Button(L10n.t("新建笔记", "New Note")) { center.newNote() }
-                .keyboardShortcut("n", modifiers: .command)
-            Divider()
-            // ⌘W：先关标签页，没有标签才关窗口。
-            Button(L10n.t("关闭标签页", "Close Tab")) { center.closeTabOrWindow() }
-                .keyboardShortcut("w", modifiers: .command)
+                .keyboardShortcut(
+                    shortcuts.shortcut(for: .newNote).keyEquivalent,
+                    modifiers: shortcuts.shortcut(for: .newNote).eventModifiers
+                )
         }
         CommandMenu(L10n.t("工作区", "Workspace")) {
-            Button(L10n.t("聚焦侧栏", "Focus Sidebar")) { center.openSidebarAndNavigate() }
-                .keyboardShortcut("o", modifiers: .command)
-            Button(L10n.t("左右分屏", "Split Editor")) { center.toggleSplit() }
-                .keyboardShortcut("d", modifiers: .command)
-            Button(L10n.t("切换分屏焦点", "Switch Split Focus")) { center.switchPaneFocus() }
-                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
-            Button(L10n.t("切换分屏焦点", "Switch Split Focus")) { center.switchPaneFocus() }
-                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-
-            Divider()
-
-            ForEach(1...9, id: \.self) { number in
-                Button(L10n.t("标签 \(number)", "Tab \(number)")) { center.switchTab(number) }
-                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+            Button(L10n.t("打开 / 关闭侧栏", "Toggle Sidebar")) { center.toggleSidebar() }
+                .keyboardShortcut(
+                    shortcuts.shortcut(for: .toggleSidebar).keyEquivalent,
+                    modifiers: shortcuts.shortcut(for: .toggleSidebar).eventModifiers
+                )
+            Button(L10n.t("关闭窗口", "Close Window")) {
+                (NSApp.keyWindow ?? center.mainWindow)?.performClose(nil)
             }
+            .keyboardShortcut(
+                shortcuts.shortcut(for: .closeWindow).keyEquivalent,
+                modifiers: shortcuts.shortcut(for: .closeWindow).eventModifiers
+            )
 
             Divider()
 
             Button(L10n.t("重命名", "Rename")) { center.renameSelection() }
-                .keyboardShortcut("r", modifiers: .command)
+                .keyboardShortcut(
+                    shortcuts.shortcut(for: .renameSelection).keyEquivalent,
+                    modifiers: shortcuts.shortcut(for: .renameSelection).eventModifiers
+                )
                 .disabled(!center.isSidebarFocused)
             Button(L10n.t("复制", "Copy")) { center.copySelection() }
-                .keyboardShortcut("c", modifiers: .command)
+
                 .disabled(!center.isSidebarFocused)
             Button(L10n.t("粘贴", "Paste")) { center.paste() }
-                .keyboardShortcut("v", modifiers: .command)
+
                 .disabled(!center.isSidebarFocused)
         }
+        CommandMenu(L10n.t("格式", "Format")) {
+            Button(L10n.t("恢复默认打字样式", "Reset Typing Style")) {
+                (NSApp.keyWindow?.firstResponder as? DayDreamTextView)?.resetWritingStyle()
+            }
+            .keyboardShortcut(shortcuts.shortcut(for: .resetWritingStyle).keyEquivalent,
+                              modifiers: shortcuts.shortcut(for: .resetWritingStyle).eventModifiers)
+            Divider()
+            formattingButton(L10n.t("粗体", "Bold"), command: .bold, action: center.toggleBold)
+            formattingButton(L10n.t("斜体", "Italic"), command: .italic, action: center.toggleItalic)
+            formattingButton(L10n.t("高亮", "Highlight"), command: .highlight, action: center.toggleHighlight)
+            formattingButton(L10n.t("文字颜色", "Text Color"), command: .textColor, action: center.toggleTextColor)
+            formattingButton(L10n.t("行内代码", "Inline Code"), command: .inlineCode, action: center.toggleInlineCode)
+        }
+    }
+
+    private func formattingButton(
+        _ title: String,
+        command: ShortcutCommand,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(title, action: action)
+            .keyboardShortcut(
+                shortcuts.shortcut(for: command).keyEquivalent,
+                modifiers: shortcuts.shortcut(for: command).eventModifiers
+            )
     }
 }
 
@@ -78,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         // 应用设置中的外观模式（跟随系统 / 浅色 / 深色）。
         EditorSettings.shared.applyAppearance()
+        ShortcutEventMonitor.shared.install()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

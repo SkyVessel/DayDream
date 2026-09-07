@@ -35,6 +35,24 @@ final class WorkspaceStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: first.path))
     }
 
+    func testImportUsesSelectedFolderAndReloadsTree() throws {
+        let root = try makeTemporaryDirectory()
+        let sourceDirectory = try makeTemporaryDirectory()
+        let source = sourceDirectory.appending(path: "Imported.md")
+        try "# Imported".write(to: source, atomically: true, encoding: .utf8)
+        let store = WorkspaceStore(rootURL: root)
+        let folder = try store.createFolder(in: nil)
+        store.select(folder)
+
+        let imported = try store.importDocument(from: source)
+
+        XCTAssertEqual(
+            imported.deletingLastPathComponent().standardizedFileURL,
+            folder.standardizedFileURL
+        )
+        XCTAssertEqual(store.nodes.first?.children.map(\.url), [imported])
+    }
+
     func testRenameSanitizesSeparatorsAndUpdatesSelection() throws {
         let store = WorkspaceStore(rootURL: try makeTemporaryDirectory())
         try store.reload()

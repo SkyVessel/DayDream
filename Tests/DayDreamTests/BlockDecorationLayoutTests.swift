@@ -12,6 +12,15 @@ final class BlockDecorationLayoutTests: XCTestCase {
         XCTAssertEqual(BlockDecorationLayout.numberedOrdinal(in: storage, paragraphLocation: 13), 1)
     }
 
+    func testNumberedOrdinalCountsWithinEachNestedLevel() throws {
+        let storage = try attributedStorage(for: "1. Outer\n  1. Inner one\n  2. Inner two\n2. Outer two")
+
+        XCTAssertEqual(BlockDecorationLayout.numberedOrdinal(in: storage, paragraphLocation: 0), 1)
+        XCTAssertEqual(BlockDecorationLayout.numberedOrdinal(in: storage, paragraphLocation: 6), 1)
+        XCTAssertEqual(BlockDecorationLayout.numberedOrdinal(in: storage, paragraphLocation: 16), 2)
+        XCTAssertEqual(BlockDecorationLayout.numberedOrdinal(in: storage, paragraphLocation: 26), 2)
+    }
+
     func testTrailingEmptyNumberedParagraphUsesNextOrdinal() {
         let textView = makeTextView()
         textView.load(markdown: "1. First")
@@ -39,6 +48,23 @@ final class BlockDecorationLayoutTests: XCTestCase {
 
         XCTAssertEqual(decorations.count, 1)
         XCTAssertEqual(decorations.first?.kind, .bullet)
+    }
+
+    func testBlockquoteUsesOneVerticalDecorationBeforeIndentedText() throws {
+        let textView = makeTextView(width: 190)
+        textView.load(markdown: "> This quoted paragraph wraps over several visual lines")
+        textView.layoutManager?.ensureLayout(for: try XCTUnwrap(textView.textContainer))
+
+        let decoration = try XCTUnwrap(BlockDecorationLayout.decorations(
+            in: textView,
+            textContainerOrigin: textView.textContainerOrigin,
+            scale: 1
+        ).first)
+
+        XCTAssertEqual(decoration.kind, .quote)
+        XCTAssertNil(decoration.label)
+        XCTAssertLessThan(decoration.markerRect.maxX, textView.textContainerOrigin.x + 18)
+        XCTAssertGreaterThan(decoration.markerRect.height, DayDreamTheme.baseFontSize)
     }
 
     func testTodoHitTestingTogglesOnlyInsideCheckbox() throws {

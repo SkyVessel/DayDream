@@ -3,6 +3,7 @@ import Foundation
 struct MarkdownTriggerResult: Equatable {
     let replacementRange: NSRange
     let kind: MarkdownBlockKind
+    var orderedStart: Int = 1
 }
 
 enum MarkdownEditingController {
@@ -20,6 +21,7 @@ enum MarkdownEditingController {
 
         let kind: MarkdownBlockKind
         switch prefix {
+        case "---", "***", "___": kind = .divider
         case "#": kind = .heading(level: 1)
         case "##": kind = .heading(level: 2)
         case "###": kind = .heading(level: 3)
@@ -28,7 +30,13 @@ enum MarkdownEditingController {
         case "1.": kind = .numbered
         case "[ ]", "[]": kind = .todo(checked: false)
         case "[x]", "[X]": kind = .todo(checked: true)
-        default: return nil
+        case ">": kind = .quote
+        case "```": kind = .code(language: nil)
+        default:
+            guard prefix.hasSuffix("."), !prefix.dropLast().isEmpty,
+                  prefix.dropLast().allSatisfy({ $0.isASCII && $0.isNumber }),
+                  let start = Int(prefix.dropLast()), start < Int.max else { return nil }
+            return MarkdownTriggerResult(replacementRange: prefixRange, kind: .numbered, orderedStart: start)
         }
         return MarkdownTriggerResult(replacementRange: prefixRange, kind: kind)
     }
@@ -40,7 +48,7 @@ enum MarkdownEditingController {
         switch currentKind {
         case .body:
             return .body
-        case .heading:
+        case .heading, .divider:
             return .body
         case .bullet:
             return currentText.isEmpty ? nil : .bullet
@@ -48,6 +56,10 @@ enum MarkdownEditingController {
             return currentText.isEmpty ? nil : .numbered
         case .todo:
             return currentText.isEmpty ? nil : .todo(checked: false)
+        case .quote:
+            return currentText.isEmpty ? nil : .quote
+        case let .code(language):
+            return currentText.isEmpty ? nil : .code(language: language)
         }
     }
 }

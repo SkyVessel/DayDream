@@ -14,6 +14,8 @@ final class MarkdownEditingControllerTests: XCTestCase {
             ("[ ]", .todo(checked: false)),
             ("[]", .todo(checked: false)),
             ("[x]", .todo(checked: true)),
+            (">", .quote),
+            ("```", .code(language: nil)),
         ]
 
         for (source, kind) in cases {
@@ -48,6 +50,16 @@ final class MarkdownEditingControllerTests: XCTestCase {
             MarkdownEditingController.nextKind(after: .body, currentText: "Body"),
             .body
         )
+        XCTAssertEqual(
+            MarkdownEditingController.nextKind(after: .quote, currentText: "Quoted"),
+            .quote
+        )
+        XCTAssertNil(MarkdownEditingController.nextKind(after: .quote, currentText: ""))
+        XCTAssertEqual(
+            MarkdownEditingController.nextKind(after: .code(language: "swift"), currentText: "let value = 1"),
+            .code(language: "swift")
+        )
+        XCTAssertNil(MarkdownEditingController.nextKind(after: .code(language: nil), currentText: ""))
     }
 
     func testSpaceConvertsHeadingMarkerIntoEmptyHeading() {
@@ -87,12 +99,29 @@ final class MarkdownEditingControllerTests: XCTestCase {
         XCTAssertEqual(textView.exportMarkdown(), "## Title\n")
     }
 
+    func testTabAndShiftTabChangeListNestingAndEnterKeepsIt() {
+        let textView = makeTextView()
+        textView.load(markdown: "1. Parent\n1. Child")
+
+        textView.setSelectedRange(NSRange(location: 7, length: 0))
+        textView.doCommand(by: #selector(NSResponder.insertTab(_:)))
+        XCTAssertEqual(textView.exportMarkdown(), "1. Parent\n  1. Child")
+
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+        textView.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        XCTAssertEqual(textView.exportMarkdown(), "1. Parent\n  1. Child\n  2. ")
+
+        textView.doCommand(by: #selector(NSResponder.insertBacktab(_:)))
+        XCTAssertEqual(textView.exportMarkdown(), "1. Parent\n  1. Child\n2. ")
+    }
+
     func testBackspaceRemovesAppliedBlockStyleAtParagraphStart() {
         let cases: [(String, MarkdownBlockKind)] = [
             ("# ", .heading(level: 1)),
             ("- ", .bullet),
             ("1. ", .numbered),
             ("- [ ] ", .todo(checked: false)),
+            ("> ", .quote),
         ]
 
         for (markdown, kind) in cases {

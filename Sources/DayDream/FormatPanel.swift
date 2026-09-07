@@ -5,12 +5,12 @@ import AppKit
 final class FormatPanel: NSPanel {
 
     enum Action {
-        case italic, bold, highlight, textColor
+        case italic, bold, inlineCode, highlight, textColor
     }
 
     var onAction: ((Action) -> Void)?
 
-    private let panelWidth: CGFloat = 152
+    private let panelWidth: CGFloat = 186
     private let panelHeight: CGFloat = 34
 
     init() {
@@ -39,6 +39,7 @@ final class FormatPanel: NSPanel {
         let items: [(Action, String)] = [
             (.italic, "italic"),
             (.bold, "bold"),
+            (.inlineCode, "chevron.left.forwardslash.chevron.right"),
             (.highlight, "highlighter"),
             (.textColor, "textformat"),
         ]

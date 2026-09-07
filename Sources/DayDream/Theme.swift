@@ -84,14 +84,15 @@ enum DayDreamTheme {
     static func textAttributes(
         for appearance: NSAppearance,
         scale: CGFloat = 1,
-        blockKind: MarkdownBlockKind = .body
+        blockKind: MarkdownBlockKind = .body,
+        listIndentation: String = ""
     ) -> [NSAttributedString.Key: Any] {
         let paragraph = NSMutableParagraphStyle()
         let pointSize: CGFloat
         let weight: NSFont.Weight
 
         switch blockKind {
-        case .body, .bullet, .numbered, .todo:
+        case .body, .bullet, .numbered, .todo, .quote, .divider:
             pointSize = baseFontSize
             weight = .regular
             // 行距：两行之间的距离，由设置页调整。
@@ -103,26 +104,52 @@ enum DayDreamTheme {
             paragraph.lineHeightMultiple = 1.18
             paragraph.paragraphSpacingBefore = 8 * scale
             paragraph.paragraphSpacing = 5 * scale
+        case .code:
+            pointSize = 16.5
+            weight = .regular
+            paragraph.lineHeightMultiple = 1.35
+            paragraph.firstLineHeadIndent = 14 * scale
+            paragraph.headIndent = 14 * scale
+            paragraph.paragraphSpacingBefore = 2 * scale
+            paragraph.paragraphSpacing = 2 * scale
         }
 
         if blockKind.isList {
-            paragraph.firstLineHeadIndent = 30 * scale
-            paragraph.headIndent = 30 * scale
+            let nestingOffset = CGFloat(indentationColumns(listIndentation)) * 12 * scale
+            paragraph.firstLineHeadIndent = 30 * scale + nestingOffset
+            paragraph.headIndent = 30 * scale + nestingOffset
+        } else if blockKind == .quote {
+            paragraph.firstLineHeadIndent = 18 * scale
+            paragraph.headIndent = 18 * scale
         }
 
         let foreground: NSColor
         if case .todo(checked: true) = blockKind {
             foreground = text(for: appearance).withAlphaComponent(0.52)
+        } else if blockKind == .quote {
+            foreground = text(for: appearance).withAlphaComponent(0.78)
         } else {
             foreground = text(for: appearance)
         }
 
+        let resolvedFont = if case .code = blockKind {
+            NSFont.monospacedSystemFont(ofSize: pointSize * scale, weight: weight)
+        } else {
+            scaledFont(pointSize: pointSize * scale, weight: weight)
+        }
+
         return [
-            .font: scaledFont(pointSize: pointSize * scale, weight: weight),
+            .font: resolvedFont,
             .foregroundColor: foreground,
             .kern: letterSpacing * scale,
             .paragraphStyle: paragraph,
         ]
+    }
+
+    static func indentationColumns(_ indentation: String) -> Int {
+        indentation.reduce(0) { columns, character in
+            columns + (character == "\t" ? 2 : 1)
+        }
     }
 
     // MARK: - 行内样式（粗体 / 斜体 / 高亮 / 文字颜色）
@@ -133,25 +160,57 @@ enum DayDreamTheme {
         base: [NSAttributedString.Key: Any],
         bold: Bool,
         italic: Bool,
+        inlineCode: Bool,
+        linkDestination: String?,
+        imageDestination: String?,
         textColorName: String?,
         highlightName: String?,
+        fontFamily: String? = nil,
         for appearance: NSAppearance
     ) -> [NSAttributedString.Key: Any] {
         var attributes = base
         var font = base[.font] as? NSFont ?? EditorSettings.shared.editorFont
+        if let fontFamily {
+            font = EditorSettings.resolveFont(fontFamily, size: font.pointSize)
+            attributes[.dayDreamFontFamily] = fontFamily
+        }
+        if inlineCode {
+            font = .monospacedSystemFont(ofSize: font.pointSize, weight: .regular)
+        }
         let manager = NSFontManager.shared
         if bold { font = manager.convert(font, toHaveTrait: .boldFontMask) }
         if italic { font = manager.convert(font, toHaveTrait: .italicFontMask) }
+        // Imported fonts often provide only a regular face. AppKit silently keeps
+        // that face when conversion fails, so synthesize the missing appearance.
+        attributes[.strokeWidth] = nil
+        attributes[.obliqueness] = nil
+        if bold, !manager.traits(of: font).contains(.boldFontMask) {
+            attributes[.strokeWidth] = -4.5
+        }
+        if bold, manager.traits(of: font).contains(.boldFontMask) { attributes[.strokeWidth] = -1.2 }
+        if italic, !manager.traits(of: font).contains(.italicFontMask) {
+            attributes[.obliqueness] = 0.22
+        }
         attributes[.font] = font
 
         if bold { attributes[.dayDreamBold] = true }
         if italic { attributes[.dayDreamItalic] = true }
+        if inlineCode { attributes[.dayDreamInlineCode] = true }
+        if let linkDestination {
+            attributes[.dayDreamLink] = linkDestination
+            attributes[.link] = linkDestination
+            attributes[.underlineStyle] = 0
+            attributes[.foregroundColor] = inlineTextColor("blue", for: appearance)
+        }
+        if let imageDestination {
+            attributes[.dayDreamImage] = imageDestination
+            attributes[.foregroundColor] = inlineTextColor("blue", for: appearance)
+        }
         if let textColorName {
             attributes[.foregroundColor] = inlineTextColor(textColorName, for: appearance)
             attributes[.dayDreamTextColor] = textColorName
         }
         if let highlightName {
-            attributes[.backgroundColor] = inlineHighlightColor(highlightName, for: appearance)
             attributes[.dayDreamHighlight] = highlightName
         }
         return attributes

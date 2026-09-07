@@ -65,4 +65,49 @@ final class MarkdownDocumentTests: XCTestCase {
             [.init(kind: .body, text: "")]
         )
     }
+
+    func testParsesAndSerializesBlockquote() {
+        let document = MarkdownDocumentCodec.parse("> Quoted text")
+
+        XCTAssertEqual(document.blocks, [
+            MarkdownBlock(kind: .quote, text: "Quoted text"),
+        ])
+        XCTAssertEqual(MarkdownDocumentCodec.serialize(document), "> Quoted text")
+    }
+
+    func testParsesAndSerializesFencedCodeWithoutInterpretingItsContents() {
+        let source = "Before\n```swift\nlet value = *literal*\nprint(value)\n```\nAfter"
+        let document = MarkdownDocumentCodec.parse(source)
+
+        XCTAssertEqual(document.blocks, [
+            .init(kind: .body, text: "Before"),
+            .init(kind: .code(language: "swift"), text: "let value = *literal*"),
+            .init(kind: .code(language: "swift"), text: "print(value)"),
+            .init(kind: .body, text: "After"),
+        ])
+        XCTAssertEqual(MarkdownDocumentCodec.serialize(document), source)
+    }
+
+    func testUnclosedFenceRemainsLiteralBodyText() {
+        let document = MarkdownDocumentCodec.parse("Before\n```swift\nlet value = 1")
+
+        XCTAssertEqual(document.blocks, [
+            .init(kind: .body, text: "Before"),
+            .init(kind: .body, text: "```swift"),
+            .init(kind: .body, text: "let value = 1"),
+        ])
+    }
+
+    func testNestedListsPreserveTheirExactIndentation() {
+        let source = "- Parent\n  - Child\n\t1. Tab-indented child\n    - Deep child"
+        let document = MarkdownDocumentCodec.parse(source)
+
+        XCTAssertEqual(document.blocks, [
+            .init(kind: .bullet, text: "Parent"),
+            .init(kind: .bullet, text: "Child", indentation: "  "),
+            .init(kind: .numbered, text: "Tab-indented child", indentation: "\t"),
+            .init(kind: .bullet, text: "Deep child", indentation: "    "),
+        ])
+        XCTAssertEqual(MarkdownDocumentCodec.serialize(document), source)
+    }
 }
