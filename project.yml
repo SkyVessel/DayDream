@@ -1,0 +1,29 @@
+name: DayDream
+options:
+  minimumXcodeGenVersion: 2.38.0
+configs:
+  Debug: debug
+  Release: release
+targets:
+  DayDream:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/DayDream
+      - path: AppStore/Assets.xcassets
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daydream.editor
+        PRODUCT_NAME: DayDream
+        INFOPLIST_FILE: Scripts/Info.plist
+        CODE_SIGN_ENTITLEMENTS: AppStore/DayDream.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: N2J7547ZSA
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: YES
+        GENERATE_INFOPLIST_FILE: NO

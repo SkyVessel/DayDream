@@ -1,0 +1,502 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01AE9C7CFD6A267380AAC307 /* SourcePreservingMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC856DE1D43E73CD29ED57DC /* SourcePreservingMarkdown.swift */; };
+		0D049E2BED48D2C317D49AF3 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15C67456A46DFAF3DAA9CFF /* MarkdownDocument.swift */; };
+		1616A4F3A0871715468A5EF8 /* DayDreamApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1515C080E5837E3FB53BECD0 /* DayDreamApp.swift */; };
+		162B41659573D7BA4B8AAF51 /* MediaCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = D649EF847CA3AC7945D9E87A /* MediaCards.swift */; };
+		2B77CA21A98F48B5472049F7 /* EditorDisplayCommit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E95B111C8410F046F9FC9A1 /* EditorDisplayCommit.swift */; };
+		30FE6071F3B1F19B14F7F9FB /* WorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369DDD377014F250F556077E /* WorkspaceStore.swift */; };
+		35AB106C4BB19B3DB40427C4 /* ExternalDocumentWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80226916E74C14F75A22E0D5 /* ExternalDocumentWindow.swift */; };
+		3619BD26BB7A5236966AA921 /* FormatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B62448EA29B6CBD9E6FE949 /* FormatPanel.swift */; };
+		3B80216282E003440CB41C65 /* NoteHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 018A56352DDB16AF0D279B3C /* NoteHistory.swift */; };
+		3BDB3FE92B9802DE106461A4 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5903F43CD9F3636653C1DA62 /* L10n.swift */; };
+		40CE52AA8777E3E6DC5D7D73 /* EditorMediaFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB819AF4DD83E738CC0CDE8F /* EditorMediaFeatures.swift */; };
+		41595AE82FF086F947DCE142 /* NoteLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01CF6142CBD17A3DE244E3BF /* NoteLinks.swift */; };
+		4379E24FF85995CBE480FFFD /* DocumentAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1443F9A38953F0D33EC977F3 /* DocumentAppearance.swift */; };
+		4653E40B7A5993749D7EE604 /* SlashCommandPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D756B056F2E05EA7910A0099 /* SlashCommandPanel.swift */; };
+		4B3E7B503ACCE1175BABB36C /* ShortcutRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C98D14D78171DE80C53F4644 /* ShortcutRecorder.swift */; };
+		4C2A67E22A978DB06A20B24F /* BlockDecorationLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CAC8471217D1E061C7C9CE /* BlockDecorationLayout.swift */; };
+		53B222E5DF02F2AABAF0765A /* PaneShortcutRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5DDCE13813B386EE754B039 /* PaneShortcutRouting.swift */; };
+		571F1EC96581FF18CD0B421F /* TypingAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E538E21FDC177BE18015D34 /* TypingAnimation.swift */; };
+		57C71EB0D43163B81378BF46 /* PDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B839D036EDA6B52A8CF7436 /* PDFDocumentView.swift */; };
+		5E0C26E27AA218E9F426A1B4 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14BF94691EAF61EDE663F0E /* Theme.swift */; };
+		5E347357DAD594E48ECCAF2A /* InlineMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79750163974B370BFED0A146 /* InlineMarkdown.swift */; };
+		6DF1410E9702502AEF14B607 /* FontLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 355D151D13677BF9152AF6F4 /* FontLibrary.swift */; };
+		746791FFFE18F0917FAE1FD6 /* DocumentController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF2ACA8E750D55A80B92502C /* DocumentController.swift */; };
+		7F1181ECA29311639185F5B9 /* MarkdownEditingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E4AB307770BB88100AE3C5 /* MarkdownEditingController.swift */; };
+		8B6D96FFACCC48AB2B3EC691 /* WritingShortcutFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F5609FADDC1F036ECD90474 /* WritingShortcutFeedback.swift */; };
+		91AC53D7D77796327098204D /* LibrarySearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D681E0BD602F1A8A5A859DC7 /* LibrarySearch.swift */; };
+		96B3CE386FFCE02275E78382 /* WritingTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30C5AC9400F6AF88F5927902 /* WritingTools.swift */; };
+		9FD6165C3BD490069EE842D2 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF11503B54096BA1B167A1F /* EditorView.swift */; };
+		A13171EAB3EF5CB3BEDAF0A9 /* EditorSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF887628603A508506393C6B /* EditorSettings.swift */; };
+		A54A9CBAFCBF23D5AE7EEBD3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B3549B53E3A85091603E6CB3 /* Assets.xcassets */; };
+		ABC47A1262E99007BABDB413 /* DocumentTransferService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967D92CA544B93D81050BE1E /* DocumentTransferService.swift */; };
+		ACFBA8B5F9721DF30FE57532 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C03369FDD4983D1E5D3E63 /* SettingsView.swift */; };
+		ADF0C4C118299CDF7C3310C5 /* DayDreamTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F563FEC3325A0088F9CF7C2E /* DayDreamTextView.swift */; };
+		BD578A0F3A141299C105710F /* MarkdownTextStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDC57B0A06AF5A9BE2E987D8 /* MarkdownTextStorage.swift */; };
+		BE8FBE9F6DC49AC3A11BA3F4 /* InlineLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E909769BEAC530C4A308F88 /* InlineLinks.swift */; };
+		C0845EBF3FCBAFC4D774E147 /* WorkspaceHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D410836B028A701DA30A117A /* WorkspaceHost.swift */; };
+		C1219D9AD013F8091D7C9615 /* EditorStyleTransactions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA9DD8667F1E6B5C7F42F7F /* EditorStyleTransactions.swift */; };
+		C474F3FFCE2F37232C2B065D /* AppShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4C4F54F955911169B748DF5 /* AppShortcut.swift */; };
+		C544151CC64DD77830DA6D29 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9A0F42C000EE80EAF5DF2D /* SidebarView.swift */; };
+		C593EEBA4498024820527D28 /* WritingToolPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45AD4661BD5DC1271CE7CF7 /* WritingToolPicker.swift */; };
+		C78D62B20440B431F1A836CD /* PageTitles.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB328B4217FC24836695207A /* PageTitles.swift */; };
+		D30F49C6533B1C8C814A0828 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA21A1B87C718C9A561E5FE /* WorkspaceView.swift */; };
+		DEF4341EB2B6B59D340A59E8 /* ShortcutCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2898850E929372DCC72BC866 /* ShortcutCenter.swift */; };
+		F5BB2A1D6654DB2DF65FB483 /* DayDreamIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E831C2833ECB93F21087BB1 /* DayDreamIcon.swift */; };
+		F6B9E18F292510E555A07512 /* MediaResources.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38BBE63526C9FF81E2B182E /* MediaResources.swift */; };
+		F7A164BF43A3AB19EB093CFA /* EditorWritingFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADDC3E419174F38D98E2DAB /* EditorWritingFeatures.swift */; };
+		F88280779A73C63BB755A4A8 /* WritingFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADE0975B0B7BD6744467EFE1 /* WritingFeatures.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		018A56352DDB16AF0D279B3C /* NoteHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteHistory.swift; sourceTree = "<group>"; };
+		01CF6142CBD17A3DE244E3BF /* NoteLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteLinks.swift; sourceTree = "<group>"; };
+		0B839D036EDA6B52A8CF7436 /* PDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentView.swift; sourceTree = "<group>"; };
+		1443F9A38953F0D33EC977F3 /* DocumentAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentAppearance.swift; sourceTree = "<group>"; };
+		1515C080E5837E3FB53BECD0 /* DayDreamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayDreamApp.swift; sourceTree = "<group>"; };
+		1E831C2833ECB93F21087BB1 /* DayDreamIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayDreamIcon.swift; sourceTree = "<group>"; };
+		21C03369FDD4983D1E5D3E63 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2898850E929372DCC72BC866 /* ShortcutCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutCenter.swift; sourceTree = "<group>"; };
+		2C9A0F42C000EE80EAF5DF2D /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		2E909769BEAC530C4A308F88 /* InlineLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineLinks.swift; sourceTree = "<group>"; };
+		30C5AC9400F6AF88F5927902 /* WritingTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingTools.swift; sourceTree = "<group>"; };
+		33CAC8471217D1E061C7C9CE /* BlockDecorationLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockDecorationLayout.swift; sourceTree = "<group>"; };
+		355D151D13677BF9152AF6F4 /* FontLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontLibrary.swift; sourceTree = "<group>"; };
+		369DDD377014F250F556077E /* WorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStore.swift; sourceTree = "<group>"; };
+		4F5609FADDC1F036ECD90474 /* WritingShortcutFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingShortcutFeedback.swift; sourceTree = "<group>"; };
+		51E4AB307770BB88100AE3C5 /* MarkdownEditingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditingController.swift; sourceTree = "<group>"; };
+		5903F43CD9F3636653C1DA62 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
+		5CA9DD8667F1E6B5C7F42F7F /* EditorStyleTransactions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorStyleTransactions.swift; sourceTree = "<group>"; };
+		79750163974B370BFED0A146 /* InlineMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineMarkdown.swift; sourceTree = "<group>"; };
+		80226916E74C14F75A22E0D5 /* ExternalDocumentWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDocumentWindow.swift; sourceTree = "<group>"; };
+		8E95B111C8410F046F9FC9A1 /* EditorDisplayCommit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorDisplayCommit.swift; sourceTree = "<group>"; };
+		967D92CA544B93D81050BE1E /* DocumentTransferService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTransferService.swift; sourceTree = "<group>"; };
+		9B62448EA29B6CBD9E6FE949 /* FormatPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatPanel.swift; sourceTree = "<group>"; };
+		9E538E21FDC177BE18015D34 /* TypingAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingAnimation.swift; sourceTree = "<group>"; };
+		A4C4F54F955911169B748DF5 /* AppShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShortcut.swift; sourceTree = "<group>"; };
+		A5DDCE13813B386EE754B039 /* PaneShortcutRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneShortcutRouting.swift; sourceTree = "<group>"; };
+		AB819AF4DD83E738CC0CDE8F /* EditorMediaFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorMediaFeatures.swift; sourceTree = "<group>"; };
+		AC856DE1D43E73CD29ED57DC /* SourcePreservingMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePreservingMarkdown.swift; sourceTree = "<group>"; };
+		ACA21A1B87C718C9A561E5FE /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
+		ACF11503B54096BA1B167A1F /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
+		ADE0975B0B7BD6744467EFE1 /* WritingFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingFeatures.swift; sourceTree = "<group>"; };
+		AF887628603A508506393C6B /* EditorSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSettings.swift; sourceTree = "<group>"; };
+		B3549B53E3A85091603E6CB3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B45AD4661BD5DC1271CE7CF7 /* WritingToolPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingToolPicker.swift; sourceTree = "<group>"; };
+		BB328B4217FC24836695207A /* PageTitles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageTitles.swift; sourceTree = "<group>"; };
+		BDC57B0A06AF5A9BE2E987D8 /* MarkdownTextStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTextStorage.swift; sourceTree = "<group>"; };
+		C14BF94691EAF61EDE663F0E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		C98D14D78171DE80C53F4644 /* ShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorder.swift; sourceTree = "<group>"; };
+		D410836B028A701DA30A117A /* WorkspaceHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceHost.swift; sourceTree = "<group>"; };
+		D649EF847CA3AC7945D9E87A /* MediaCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaCards.swift; sourceTree = "<group>"; };
+		D681E0BD602F1A8A5A859DC7 /* LibrarySearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearch.swift; sourceTree = "<group>"; };
+		D756B056F2E05EA7910A0099 /* SlashCommandPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandPanel.swift; sourceTree = "<group>"; };
+		DF2ACA8E750D55A80B92502C /* DocumentController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentController.swift; sourceTree = "<group>"; };
+		F15C67456A46DFAF3DAA9CFF /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
+		F38BBE63526C9FF81E2B182E /* MediaResources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaResources.swift; sourceTree = "<group>"; };
+		F563FEC3325A0088F9CF7C2E /* DayDreamTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayDreamTextView.swift; sourceTree = "<group>"; };
+		FADDC3E419174F38D98E2DAB /* EditorWritingFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorWritingFeatures.swift; sourceTree = "<group>"; };
+		FAF29E4C27B0F594ED49900F /* DayDream.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DayDream.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1BDDF3EF46B7A36ACED78444 /* DayDream */ = {
+			isa = PBXGroup;
+			children = (
+				A4C4F54F955911169B748DF5 /* AppShortcut.swift */,
+				33CAC8471217D1E061C7C9CE /* BlockDecorationLayout.swift */,
+				1515C080E5837E3FB53BECD0 /* DayDreamApp.swift */,
+				1E831C2833ECB93F21087BB1 /* DayDreamIcon.swift */,
+				F563FEC3325A0088F9CF7C2E /* DayDreamTextView.swift */,
+				1443F9A38953F0D33EC977F3 /* DocumentAppearance.swift */,
+				DF2ACA8E750D55A80B92502C /* DocumentController.swift */,
+				967D92CA544B93D81050BE1E /* DocumentTransferService.swift */,
+				8E95B111C8410F046F9FC9A1 /* EditorDisplayCommit.swift */,
+				AB819AF4DD83E738CC0CDE8F /* EditorMediaFeatures.swift */,
+				AF887628603A508506393C6B /* EditorSettings.swift */,
+				5CA9DD8667F1E6B5C7F42F7F /* EditorStyleTransactions.swift */,
+				ACF11503B54096BA1B167A1F /* EditorView.swift */,
+				FADDC3E419174F38D98E2DAB /* EditorWritingFeatures.swift */,
+				80226916E74C14F75A22E0D5 /* ExternalDocumentWindow.swift */,
+				355D151D13677BF9152AF6F4 /* FontLibrary.swift */,
+				9B62448EA29B6CBD9E6FE949 /* FormatPanel.swift */,
+				2E909769BEAC530C4A308F88 /* InlineLinks.swift */,
+				79750163974B370BFED0A146 /* InlineMarkdown.swift */,
+				5903F43CD9F3636653C1DA62 /* L10n.swift */,
+				D681E0BD602F1A8A5A859DC7 /* LibrarySearch.swift */,
+				F15C67456A46DFAF3DAA9CFF /* MarkdownDocument.swift */,
+				51E4AB307770BB88100AE3C5 /* MarkdownEditingController.swift */,
+				BDC57B0A06AF5A9BE2E987D8 /* MarkdownTextStorage.swift */,
+				D649EF847CA3AC7945D9E87A /* MediaCards.swift */,
+				F38BBE63526C9FF81E2B182E /* MediaResources.swift */,
+				018A56352DDB16AF0D279B3C /* NoteHistory.swift */,
+				01CF6142CBD17A3DE244E3BF /* NoteLinks.swift */,
+				BB328B4217FC24836695207A /* PageTitles.swift */,
+				A5DDCE13813B386EE754B039 /* PaneShortcutRouting.swift */,
+				0B839D036EDA6B52A8CF7436 /* PDFDocumentView.swift */,
+				21C03369FDD4983D1E5D3E63 /* SettingsView.swift */,
+				2898850E929372DCC72BC866 /* ShortcutCenter.swift */,
+				C98D14D78171DE80C53F4644 /* ShortcutRecorder.swift */,
+				2C9A0F42C000EE80EAF5DF2D /* SidebarView.swift */,
+				D756B056F2E05EA7910A0099 /* SlashCommandPanel.swift */,
+				AC856DE1D43E73CD29ED57DC /* SourcePreservingMarkdown.swift */,
+				C14BF94691EAF61EDE663F0E /* Theme.swift */,
+				9E538E21FDC177BE18015D34 /* TypingAnimation.swift */,
+				D410836B028A701DA30A117A /* WorkspaceHost.swift */,
+				369DDD377014F250F556077E /* WorkspaceStore.swift */,
+				ACA21A1B87C718C9A561E5FE /* WorkspaceView.swift */,
+				ADE0975B0B7BD6744467EFE1 /* WritingFeatures.swift */,
+				4F5609FADDC1F036ECD90474 /* WritingShortcutFeedback.swift */,
+				B45AD4661BD5DC1271CE7CF7 /* WritingToolPicker.swift */,
+				30C5AC9400F6AF88F5927902 /* WritingTools.swift */,
+			);
+			name = DayDream;
+			path = Sources/DayDream;
+			sourceTree = "<group>";
+		};
+		4166B944C1D7EF4B662F1AA8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FAF29E4C27B0F594ED49900F /* DayDream.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4ACBC8FEF917682ED5D44538 = {
+			isa = PBXGroup;
+			children = (
+				EB4E726C6B72D6B2BE5292F2 /* AppStore */,
+				1BDDF3EF46B7A36ACED78444 /* DayDream */,
+				4166B944C1D7EF4B662F1AA8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EB4E726C6B72D6B2BE5292F2 /* AppStore */ = {
+			isa = PBXGroup;
+			children = (
+				B3549B53E3A85091603E6CB3 /* Assets.xcassets */,
+			);
+			path = AppStore;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F7711E874BE55DAE726956DD /* DayDream */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6515C1C5F165E400FC8E157F /* Build configuration list for PBXNativeTarget "DayDream" */;
+			buildPhases = (
+				FA60D223F6C5C850C3491E16 /* Sources */,
+				13769BDD1CA741665D5968C9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DayDream;
+			packageProductDependencies = (
+			);
+			productName = DayDream;
+			productReference = FAF29E4C27B0F594ED49900F /* DayDream.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		64CFAAF7C5730864EFB798C9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					F7711E874BE55DAE726956DD = {
+						DevelopmentTeam = N2J7547ZSA;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 7FF1DA9ED1478DDBE904AA97 /* Build configuration list for PBXProject "DayDream" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4ACBC8FEF917682ED5D44538;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4166B944C1D7EF4B662F1AA8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F7711E874BE55DAE726956DD /* DayDream */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		13769BDD1CA741665D5968C9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A54A9CBAFCBF23D5AE7EEBD3 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FA60D223F6C5C850C3491E16 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C474F3FFCE2F37232C2B065D /* AppShortcut.swift in Sources */,
+				4C2A67E22A978DB06A20B24F /* BlockDecorationLayout.swift in Sources */,
+				1616A4F3A0871715468A5EF8 /* DayDreamApp.swift in Sources */,
+				F5BB2A1D6654DB2DF65FB483 /* DayDreamIcon.swift in Sources */,
+				ADF0C4C118299CDF7C3310C5 /* DayDreamTextView.swift in Sources */,
+				4379E24FF85995CBE480FFFD /* DocumentAppearance.swift in Sources */,
+				746791FFFE18F0917FAE1FD6 /* DocumentController.swift in Sources */,
+				ABC47A1262E99007BABDB413 /* DocumentTransferService.swift in Sources */,
+				2B77CA21A98F48B5472049F7 /* EditorDisplayCommit.swift in Sources */,
+				40CE52AA8777E3E6DC5D7D73 /* EditorMediaFeatures.swift in Sources */,
+				A13171EAB3EF5CB3BEDAF0A9 /* EditorSettings.swift in Sources */,
+				C1219D9AD013F8091D7C9615 /* EditorStyleTransactions.swift in Sources */,
+				9FD6165C3BD490069EE842D2 /* EditorView.swift in Sources */,
+				F7A164BF43A3AB19EB093CFA /* EditorWritingFeatures.swift in Sources */,
+				35AB106C4BB19B3DB40427C4 /* ExternalDocumentWindow.swift in Sources */,
+				6DF1410E9702502AEF14B607 /* FontLibrary.swift in Sources */,
+				3619BD26BB7A5236966AA921 /* FormatPanel.swift in Sources */,
+				BE8FBE9F6DC49AC3A11BA3F4 /* InlineLinks.swift in Sources */,
+				5E347357DAD594E48ECCAF2A /* InlineMarkdown.swift in Sources */,
+				3BDB3FE92B9802DE106461A4 /* L10n.swift in Sources */,
+				91AC53D7D77796327098204D /* LibrarySearch.swift in Sources */,
+				0D049E2BED48D2C317D49AF3 /* MarkdownDocument.swift in Sources */,
+				7F1181ECA29311639185F5B9 /* MarkdownEditingController.swift in Sources */,
+				BD578A0F3A141299C105710F /* MarkdownTextStorage.swift in Sources */,
+				162B41659573D7BA4B8AAF51 /* MediaCards.swift in Sources */,
+				F6B9E18F292510E555A07512 /* MediaResources.swift in Sources */,
+				3B80216282E003440CB41C65 /* NoteHistory.swift in Sources */,
+				41595AE82FF086F947DCE142 /* NoteLinks.swift in Sources */,
+				57C71EB0D43163B81378BF46 /* PDFDocumentView.swift in Sources */,
+				C78D62B20440B431F1A836CD /* PageTitles.swift in Sources */,
+				53B222E5DF02F2AABAF0765A /* PaneShortcutRouting.swift in Sources */,
+				ACFBA8B5F9721DF30FE57532 /* SettingsView.swift in Sources */,
+				DEF4341EB2B6B59D340A59E8 /* ShortcutCenter.swift in Sources */,
+				4B3E7B503ACCE1175BABB36C /* ShortcutRecorder.swift in Sources */,
+				C544151CC64DD77830DA6D29 /* SidebarView.swift in Sources */,
+				4653E40B7A5993749D7EE604 /* SlashCommandPanel.swift in Sources */,
+				01AE9C7CFD6A267380AAC307 /* SourcePreservingMarkdown.swift in Sources */,
+				5E0C26E27AA218E9F426A1B4 /* Theme.swift in Sources */,
+				571F1EC96581FF18CD0B421F /* TypingAnimation.swift in Sources */,
+				C0845EBF3FCBAFC4D774E147 /* WorkspaceHost.swift in Sources */,
+				30FE6071F3B1F19B14F7F9FB /* WorkspaceStore.swift in Sources */,
+				D30F49C6533B1C8C814A0828 /* WorkspaceView.swift in Sources */,
+				F88280779A73C63BB755A4A8 /* WritingFeatures.swift in Sources */,
+				8B6D96FFACCC48AB2B3EC691 /* WritingShortcutFeedback.swift in Sources */,
+				C593EEBA4498024820527D28 /* WritingToolPicker.swift in Sources */,
+				96B3CE386FFCE02275E78382 /* WritingTools.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0D202ACF81E0F0FF0E9274AD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AppStore/DayDream.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = N2J7547ZSA;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Scripts/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daydream.editor;
+				PRODUCT_NAME = DayDream;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9077310A9F7F81583E8A387D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		AAB7F26DB6184F026AA83F01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AppStore/DayDream.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = N2J7547ZSA;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Scripts/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.daydream.editor;
+				PRODUCT_NAME = DayDream;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		E88771D639B489CA7EDF2343 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6515C1C5F165E400FC8E157F /* Build configuration list for PBXNativeTarget "DayDream" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0D202ACF81E0F0FF0E9274AD /* Debug */,
+				AAB7F26DB6184F026AA83F01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7FF1DA9ED1478DDBE904AA97 /* Build configuration list for PBXProject "DayDream" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E88771D639B489CA7EDF2343 /* Debug */,
+				9077310A9F7F81583E8A387D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 64CFAAF7C5730864EFB798C9 /* Project object */;
+}
