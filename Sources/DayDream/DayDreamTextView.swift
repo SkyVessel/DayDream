@@ -28,6 +28,9 @@ final class DayDreamTextView: NSTextView {
     var writingBadge: NSView?
     var writingBadgeTimer: Timer?
     var isDisplayCommitScheduled = false
+    var isUserScrollingUltra = false
+    var isFollowingUltraViewport = false
+    var isScrollingUltraCaret = false
     var ultraScrollTimer: Timer?
     var isUltraFocus = false
     var mediaViews: [UUID: MediaCardView] = [:]
@@ -42,7 +45,11 @@ final class DayDreamTextView: NSTextView {
     private var isApplyingSpaceWidth = false
     private var mostRecentEditChangedCharacters = false
     private var sourcePreservation: SourcePreservingMarkdown?
-    private var completionSuffix: String?
+    var openNoteLink: ((String) -> Void)?
+    var selectPageTitleOnNextLoad = false
+    var linkExistingPage: ((NSRange) -> Void)?
+    var createLinkedPage: ((NSRange) -> Void)?
+    var completionSuffix: String?
     private var pendingMarkdownNotification: DispatchWorkItem?
     private var markdownNotificationGeneration = 0
     private let markdownNotificationDelay: TimeInterval = 0.075
@@ -73,7 +80,7 @@ final class DayDreamTextView: NSTextView {
     /// 一行有多长：由设置页调整，内容栏始终居中。
     private var maximumContentWidth: CGFloat { EditorSettings.shared.contentWidth }
     private let verticalInset: CGFloat = 40
-    private var zoomScale: CGFloat = 1
+    private(set) var zoomScale: CGFloat = 1
 
     // MARK: - 初始化
 
@@ -89,7 +96,7 @@ final class DayDreamTextView: NSTextView {
 
     private func commonInit() {
         registerForDraggedTypes([.fileURL, .URL, .png, .tiff])
-        linkTextAttributes = [.foregroundColor: DayDreamTheme.inlineTextColor("blue", for: effectiveAppearance), .underlineStyle: 0]
+        linkTextAttributes = [.cursor: NSCursor.pointingHand]
         NotificationCenter.default.addObserver(self, selector: #selector(siteIconLoaded(_:)), name: .siteIconDidLoad, object: nil)
         isRichText = false
         allowsUndo = true
@@ -215,6 +222,8 @@ final class DayDreamTextView: NSTextView {
             let style = InlineStyle(
                 bold: attributes[.dayDreamBold] as? Bool ?? false,
                 italic: attributes[.dayDreamItalic] as? Bool ?? false,
+                underline: attributes[.dayDreamUnderline] as? Bool ?? false,
+                strikethrough: attributes[.dayDreamStrikethrough] as? Bool ?? false,
                 code: attributes[.dayDreamInlineCode] as? Bool ?? false,
                 linkDestination: attributes[.dayDreamLink] as? String,
                 imageDestination: attributes[.dayDreamImage] as? String,
@@ -245,6 +254,8 @@ final class DayDreamTextView: NSTextView {
                     textColorName: item.style.textColor,
                     highlightName: item.style.highlight,
                     fontFamily: item.style.fontFamily,
+                        underline: item.style.underline,
+                        strikethrough: item.style.strikethrough,
                     for: appearance
                 ),
                 range: item.range
@@ -282,7 +293,7 @@ final class DayDreamTextView: NSTextView {
             let paragraph = value.paragraphRange(for: NSRange(location: location, length: 0))
             let kind = currentBlockKind(at: location)
             let indentation = currentListIndentation(at: location)
-            for key: NSAttributedString.Key in [.underlineStyle, .underlineColor, .strokeWidth, .obliqueness] {
+            for key: NSAttributedString.Key in [.underlineStyle, .strikethroughStyle, .underlineColor, .strokeWidth, .obliqueness] {
                 storage.removeAttribute(key, range: paragraph)
                 layoutManager?.removeTemporaryAttribute(key, forCharacterRange: paragraph)
             }
@@ -431,6 +442,14 @@ final class DayDreamTextView: NSTextView {
             canonicalBaseline: canonicalMarkdown()
         )
         isLoadingDocument = false
+        if selectPageTitleOnNextLoad {
+            selectPageTitleOnNextLoad = false
+            let title = (value.string as NSString).paragraphRange(for: NSRange(location: 0, length: 0))
+            let length = (value.string as NSString).substring(with: title).trimmingCharacters(in: .newlines).utf16.count
+            setSelectedRange(NSRange(location: 0, length: length))
+            setTypingAttributes(for: .heading(level: 1))
+        }
+        updatePageInsets()
         mostRecentEditChangedCharacters = false
         updateFocusAppearance()
         updateWordCompletion()
@@ -585,7 +604,10 @@ final class DayDreamTextView: NSTextView {
         )
     }
 
+
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let target = PaneShortcutRouting.current(in: window)?.documentResponder, target !== self { return false }
         if handleEditorShortcut(event) { return true }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard event.type == .keyDown,
@@ -656,6 +678,7 @@ final class DayDreamTextView: NSTextView {
         (layoutManager as? TypingLayoutManager)?.prepareForEdit(actualReplacement, insertedLength: input.utf16.count)
         typingAttributes = writingAttributes(base: typingAttributes)
         super.insertText(insertString, replacementRange: replacementRange)
+        if input.hasSuffix("]]") || input == "]" { finishTypedNoteLink() }
         if !hasMarkedText(), input.utf16.count < 80 {
             let end = selectedRange.location
             let start = max(0, end - input.utf16.count)
@@ -678,6 +701,13 @@ final class DayDreamTextView: NSTextView {
             return
         }
         (layoutManager as? TypingLayoutManager)?.clearReveals()
+        if selector == #selector(NSResponder.insertTab(_:)),
+           !hasMarkedText(), selectedRange.length == 0,
+           let suffix = completionSuffix {
+            completionSuffix = nil
+            super.insertText(suffix, replacementRange: selectedRange)
+            return
+        }
         if !hasMarkedText(), currentBlockKind(at: selectedRange.location).isList,
            selector == #selector(NSResponder.insertTab(_:)) || selector == #selector(NSResponder.insertBacktab(_:)) {
             let backwards = selector == #selector(NSResponder.insertBacktab(_:))
@@ -690,13 +720,7 @@ final class DayDreamTextView: NSTextView {
             }
             return
         }
-        if selector == #selector(NSResponder.insertTab(_:)),
-           !hasMarkedText(), selectedRange.length == 0,
-           let suffix = completionSuffix {
-            completionSuffix = nil
-            super.insertText(suffix, replacementRange: selectedRange)
-            return
-        }
+
 
         if selector == #selector(NSResponder.deleteBackward(_:)),
            !hasMarkedText(),
@@ -727,7 +751,7 @@ final class DayDreamTextView: NSTextView {
             case #selector(NSResponder.insertNewline(_:)):
                 let commands = filteredSlashCommands
                 guard commands.indices.contains(selectedSlashCommandIndex) else { return }
-                applySlashCommand(commands[selectedSlashCommandIndex].kind)
+                applySlashCommand(commands[selectedSlashCommandIndex])
                 return
             case #selector(NSResponder.cancelOperation(_:)):
                 closeSlashCommandMenu()
@@ -822,6 +846,18 @@ final class DayDreamTextView: NSTextView {
             count: filteredSlashCommands.count
         )
         slashPanel.updateSelection(selectedSlashCommandIndex)
+    }
+
+    func applySlashCommand(_ command: SlashCommand) {
+        guard ["page", "link page"].contains(command.syntax) else { applySlashCommand(command.kind); return }
+        guard isSlashCommandMenuOpen else { return }
+        let value = string as NSString
+        let range = value.paragraphRange(for: NSRange(location: min(selectedRange().location, value.length), length: 0))
+        let text = value.substring(with: range).trimmingCharacters(in: .newlines)
+        closeSlashCommandMenu()
+        let replacement = NSRange(location: range.location, length: text.utf16.count)
+        if command.syntax == "link page" { linkExistingPage?(replacement) }
+        else { createLinkedPage?(replacement) }
     }
 
     func applySlashCommand(_ kind: MarkdownBlockKind) {
@@ -1104,7 +1140,7 @@ final class DayDreamTextView: NSTextView {
         drawBlockDecorations(in: dirtyRect)
         drawHeadingPlaceholder(in: dirtyRect)
         drawWordCompletion(in: dirtyRect)
-        guard let rect = caretRect, caretAlpha > 0 else { return }
+        guard window?.firstResponder === self, let rect = caretRect, caretAlpha > 0 else { return }
         DayDreamTheme.caret(for: effectiveAppearance)
             .withAlphaComponent(caretAlpha)
             .setFill()
@@ -1374,6 +1410,16 @@ final class DayDreamTextView: NSTextView {
         closeSlashCommandMenu()
         hideFormatPanel()
         let point = convert(event.locationInWindow, from: nil)
+        if let storage = textStorage, let layoutManager, let textContainer, storage.length > 0 {
+            let local = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+            let glyph = layoutManager.glyphIndex(for: local, in: textContainer)
+            if glyph < layoutManager.numberOfGlyphs,
+               layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer).contains(local) {
+                let index = layoutManager.characterIndexForGlyph(at: glyph)
+                if index < storage.length, let destination = storage.attribute(.dayDreamLink, at: index, effectiveRange: nil) as? String,
+                   let target = NoteLinks.target(destination) { window?.makeFirstResponder(self); openNoteLink?(target); return }
+            }
+        }
         if toggleTodo(at: point) { return }
         super.mouseDown(with: event)
     }
@@ -1608,7 +1654,7 @@ final class DayDreamTextView: NSTextView {
     }
 
     @objc private func clipBoundsChanged() {
-        centerUltraFocusCaret()
+        if isUltraFocus, isUserScrollingUltra, !isScrollingUltraCaret { followUltraFocusViewport() }
         hideFormatPanel()
     }
 

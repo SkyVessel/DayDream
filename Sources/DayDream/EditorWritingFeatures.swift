@@ -14,7 +14,7 @@ extension DayDreamTextView {
         guard activeWritingStyle != nil || activeWritingColor != nil || activeWritingHighlight != nil else { return base }
         var clean = base
         if activeWritingStyle != nil {
-            for key: NSAttributedString.Key in [.dayDreamBold, .dayDreamItalic, .dayDreamFontFamily, .dayDreamInlineCode] { clean[key] = nil }
+            for key: NSAttributedString.Key in [.dayDreamBold, .dayDreamItalic, .dayDreamUnderline, .dayDreamStrikethrough, .dayDreamFontFamily, .dayDreamInlineCode] { clean[key] = nil }
         }
         return DayDreamTheme.inlineStyledAttributes(
             base: clean,
@@ -26,6 +26,8 @@ extension DayDreamTextView {
             textColorName: activeWritingColor?.rawValue,
             highlightName: activeWritingHighlight?.highlightColor,
             fontFamily: activeWritingStyle?.fontName,
+            underline: activeWritingStyle == .underline,
+            strikethrough: activeWritingStyle == .strikethrough,
             for: effectiveAppearance
         )
     }
@@ -112,8 +114,25 @@ extension DayDreamTextView {
         else { ultraScrollTimer?.invalidate(); ultraScrollTimer = nil; scrollRangeToVisible(selectedRange()) }
     }
 
+    /// Follow a user-scrolled viewport without starting another centering animation.
+    func followUltraFocusViewport() {
+        guard !isFollowingUltraViewport, let scroll = enclosingScrollView,
+              let manager = layoutManager, let container = textContainer else { return }
+        ultraScrollTimer?.invalidate(); ultraScrollTimer = nil
+        guard retypeSession == nil, !hasMarkedText(), !string.isEmpty else { return }
+        isFollowingUltraViewport = true
+        defer { isFollowingUltraViewport = false }
+        manager.ensureLayout(for: container)
+        let point = NSPoint(x: max(0, (currentCaretRect()?.minX ?? textContainerOrigin.x) - textContainerOrigin.x),
+                            y: scroll.contentView.bounds.midY - textContainerOrigin.y)
+        let glyph = manager.glyphIndex(for: point, in: container)
+        guard glyph < manager.numberOfGlyphs else { return }
+        let location = manager.characterIndexForGlyph(at: glyph)
+        setSelectedRange(NSRange(location: min(location, string.utf16.count), length: 0))
+    }
+
     func centerUltraFocusCaret() {
-        guard isUltraFocus, ultraScrollTimer == nil, enclosingScrollView != nil else { return }
+        guard isUltraFocus, !isFollowingUltraViewport, ultraScrollTimer == nil, enclosingScrollView != nil else { return }
         let timer = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in
             guard let self, self.isUltraFocus, let scroll = self.enclosingScrollView,
                   let manager = self.layoutManager, let container = self.textContainer else { return }
@@ -132,8 +151,10 @@ extension DayDreamTextView {
             let clip = scroll.contentView
             let delta = desired - clip.bounds.minY
             let next = abs(delta) < 0.4 ? desired : clip.bounds.minY + delta * 0.19
+            self.isScrollingUltraCaret = true
             clip.scroll(to: NSPoint(x: clip.bounds.minX, y: next))
             scroll.reflectScrolledClipView(clip)
+            self.isScrollingUltraCaret = false
             if abs(delta) < 0.4 { self.ultraScrollTimer?.invalidate(); self.ultraScrollTimer = nil }
         }
         ultraScrollTimer = timer

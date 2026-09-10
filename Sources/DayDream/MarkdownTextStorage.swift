@@ -7,6 +7,8 @@ extension NSAttributedString.Key {
     static let dayDreamListIndentation = NSAttributedString.Key("DayDreamListIndentation")
     /// 行内样式语义键：粗体 / 斜体 / 文字颜色预设名 / 高亮颜色预设名。
     static let dayDreamBold = NSAttributedString.Key("DayDreamBold")
+    static let dayDreamUnderline = NSAttributedString.Key("DayDreamUnderline")
+    static let dayDreamStrikethrough = NSAttributedString.Key("DayDreamStrikethrough")
     static let dayDreamItalic = NSAttributedString.Key("DayDreamItalic")
     static let dayDreamInlineCode = NSAttributedString.Key("DayDreamInlineCode")
     static let dayDreamLink = NSAttributedString.Key("DayDreamLink")
@@ -71,6 +73,8 @@ enum MarkdownTextStorage {
                         textColorName: run.style.textColor,
                         highlightName: run.style.highlight,
                         fontFamily: run.style.fontFamily,
+                        underline: run.style.underline,
+                        strikethrough: run.style.strikethrough,
                         for: appearance
                     ),
                     range: run.range

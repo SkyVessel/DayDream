@@ -56,6 +56,7 @@ enum MarkdownEditingController {
             return currentText.isEmpty ? nil : .numbered
         case .todo:
             return currentText.isEmpty ? nil : .todo(checked: false)
+        case .translation: return .body
         case .quote:
             return currentText.isEmpty ? nil : .quote
         case let .code(language):

@@ -13,7 +13,7 @@ final class WorkspaceViewTests: XCTestCase {
         let note = directory.appending(path: "Focused.md")
         try "Body".write(to: note, atomically: true, encoding: .utf8)
 
-        let center = ShortcutCenter.shared
+        var center = ShortcutCenter.shared
         center.isSidebarFocused = false
         center.sidebarNavigationURL = nil
         defer {
@@ -30,6 +30,7 @@ final class WorkspaceViewTests: XCTestCase {
         hostingView.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 
+        center = try XCTUnwrap(PaneShortcutRouting.current(in: window))
         center.isSidebarFocused = true
         center.sidebarNavigationURL = note
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))

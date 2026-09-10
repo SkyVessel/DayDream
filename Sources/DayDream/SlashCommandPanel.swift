@@ -4,14 +4,17 @@ struct SlashCommand: Identifiable, Equatable {
     let syntax: String
     let kind: MarkdownBlockKind
 
-    var id: MarkdownBlockKind { kind }
+    var id: String { syntax }
 
     var title: String {
+        if syntax == "page" { return L10n.t("关联页面", "Page") }
+        if syntax == "link page" { return L10n.t("链接已有页面", "Link Page") }
         switch kind {
         case let .heading(level): return L10n.t("标题 \(min(max(level, 1), 4))", "Heading \(min(max(level, 1), 4))")
         case .bullet: return L10n.t("无序列表", "Bulleted list")
         case .numbered: return L10n.t("有序列表", "Numbered list")
         case .todo: return L10n.t("待办事项", "To-do list")
+        case .translation: return L10n.t("翻译块", "Translation Block")
         case .quote: return L10n.t("引用", "Quote")
         case .code: return L10n.t("代码块", "Code block")
         case .divider: return L10n.t("分隔线", "Divider")
@@ -20,6 +23,8 @@ struct SlashCommand: Identifiable, Equatable {
     }
 
     var subtitle: String {
+        if syntax == "page" { return L10n.t("创建并打开关联笔记", "Create and open a linked note") }
+        if syntax == "link page" { return L10n.t("搜索并插入笔记链接", "Search and insert a note link") }
         switch kind {
         case .heading(1): return L10n.t("大节标题", "Large section title")
         case .heading(2): return L10n.t("中节标题", "Medium section title")
@@ -28,6 +33,7 @@ struct SlashCommand: Identifiable, Equatable {
         case .bullet: return L10n.t("创建一个无序列表", "Create a bulleted list")
         case .numbered: return L10n.t("创建一个有序列表", "Create an ordered list")
         case .todo: return L10n.t("用复选框跟踪任务", "Track a task with a checkbox")
+        case .translation: return L10n.t("输入后按 Enter 翻译", "Press Enter to translate")
         case .quote: return L10n.t("突出显示引用内容", "Capture a quoted passage")
         case .code: return L10n.t("保留格式的多行代码", "Write multi-line code")
         case .divider: return L10n.t("分隔线", "Divider")
@@ -47,6 +53,7 @@ enum SlashCommandCatalog {
             case .bullet: aliases = "bullet unordered list 无序列表"
             case .numbered: aliases = "number ordered list 有序 数字列表"
             case .todo: aliases = "todo checkbox task 待办 复选框"
+            case .translation: aliases = "translate translation 翻译 !!"
             case .quote: aliases = "quote blockquote 引用"
             case .code: aliases = "code 代码"
             case .divider: aliases = "divider horizontal rule 分隔线"
@@ -57,6 +64,8 @@ enum SlashCommandCatalog {
     }
 
     static let all: [SlashCommand] = [
+        .init(syntax: "page", kind: .body),
+        .init(syntax: "link page", kind: .body),
         .init(syntax: "---", kind: .divider),
         .init(syntax: "#", kind: .heading(level: 1)),
         .init(syntax: "##", kind: .heading(level: 2)),
@@ -79,7 +88,7 @@ enum SlashCommandNavigation {
 
 final class SlashCommandPanel: NSPanel {
     private var rowButtons: [SlashCommandButton] = []
-    private var onChoose: ((MarkdownBlockKind) -> Void)?
+    private var onChoose: ((SlashCommand) -> Void)?
     private var onDismiss: (() -> Void)?
 
     init() {
@@ -107,7 +116,7 @@ final class SlashCommandPanel: NSPanel {
         selectedIndex: Int,
         screenAnchor: NSRect,
         onDismiss: @escaping () -> Void,
-        onChoose: @escaping (MarkdownBlockKind) -> Void
+        onChoose: @escaping (SlashCommand) -> Void
     ) {
         self.onChoose = onChoose
         self.onDismiss = onDismiss
@@ -202,7 +211,7 @@ final class SlashCommandPanel: NSPanel {
     }
 
     @objc private func chooseCommand(_ sender: SlashCommandButton) {
-        onChoose?(sender.command.kind)
+        onChoose?(sender.command)
     }
 
     @objc private func closeFromFooter(_ sender: NSButton) {
@@ -302,6 +311,18 @@ private final class SlashCommandButton: NSButton {
         color.setStroke()
         color.setFill()
 
+        if command.syntax == "page" || command.syntax == "link page" {
+            if let symbol = NSImage(systemSymbolName: command.syntax == "page" ? "doc.badge.plus" : "link", accessibilityDescription: command.title) {
+                let tinted = NSImage(size: symbol.size, flipped: false) { bounds in
+                    symbol.draw(in: bounds)
+                    color.setFill()
+                    bounds.fill(using: .sourceIn)
+                    return true
+                }
+                tinted.draw(in: rect.insetBy(dx: 2, dy: 2))
+            }
+            return
+        }
         switch command.kind {
         case .divider:
             NSBezierPath(rect: NSRect(x: rect.minX, y: rect.midY, width: rect.width, height: 1)).fill()
@@ -326,6 +347,8 @@ private final class SlashCommandButton: NSButton {
             check.lineCapStyle = .round
             check.lineJoinStyle = .round
             check.stroke()
+        case .translation:
+            ("译" as NSString).draw(in: rect, withAttributes: [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: color])
         case .quote:
             let bar = NSBezierPath(
                 roundedRect: NSRect(x: rect.minX + 5, y: rect.minY + 3, width: 2.5, height: rect.height - 6),

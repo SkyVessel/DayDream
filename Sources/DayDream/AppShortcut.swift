@@ -3,7 +3,8 @@ import Combine
 import SwiftUI
 
 enum ShortcutCommand: String, CaseIterable, Codable, Identifiable, Sendable {
-    case newNote
+    case historyBack, historyForward, focusLeftPane, focusRightPane
+    case newNote, searchFiles
     case toggleSidebar = "focusSidebar"
     case closeWindow
     case renameSelection
@@ -12,6 +13,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable, Sendable {
     case deleteSelection
     case bold
     case italic
+    case underline, strikethrough, toggleFocus
     case highlight
     case textColor
     case inlineCode
@@ -21,6 +23,11 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var defaultShortcut: AppShortcut {
         switch self {
+        case .historyBack: AppShortcut(key: "\u{F702}", modifiers: [.control, .option])
+        case .historyForward: AppShortcut(key: "\u{F703}", modifiers: [.control, .option])
+        case .focusLeftPane: AppShortcut(key: "\u{F702}", modifiers: [.option, .command])
+        case .focusRightPane: AppShortcut(key: "\u{F703}", modifiers: [.option, .command])
+        case .searchFiles: AppShortcut(key: " ", modifiers: .option)
         case .newNote: AppShortcut(key: "n", modifiers: .command)
         case .toggleSidebar: AppShortcut(key: "o", modifiers: .command)
         case .closeWindow: AppShortcut(key: "w", modifiers: .command)
@@ -29,6 +36,9 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable, Sendable {
         case .pasteSelection: AppShortcut(key: "v", modifiers: .command)
         case .deleteSelection: AppShortcut(key: "\u{7F}", modifiers: .command)
         case .bold: AppShortcut(key: "b", modifiers: .command)
+        case .underline: AppShortcut(key: "u", modifiers: .command)
+        case .strikethrough: AppShortcut(key: "x", modifiers: [.command, .shift])
+        case .toggleFocus: AppShortcut(key: "f", modifiers: [.control, .option])
         case .italic: AppShortcut(key: "i", modifiers: .command)
         case .highlight: AppShortcut(key: "h", modifiers: [.command, .shift])
         case .textColor: AppShortcut(key: "c", modifiers: [.command, .shift])

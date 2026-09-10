@@ -1,16 +1,20 @@
 import AppKit
 import Foundation
+import PDFKit
 
 enum DocumentTransferError: LocalizedError, Equatable {
     case unsupportedFormat
     case invalidMarkdownEncoding
+    case unreadablePDF
     case unreadableWordDocument
     case destinationUnavailable
 
     var errorDescription: String? {
         switch self {
+        case .unreadablePDF:
+            return L10n.t("无法读取这个 PDF 文件。", "The PDF file could not be read.")
         case .unsupportedFormat:
-            return L10n.t("仅支持 Markdown 和 Word (.docx) 文件。", "Only Markdown and Word (.docx) files are supported.")
+            return L10n.t("仅支持 Markdown、PDF 和 Word (.docx) 文件。", "Only Markdown, PDF and Word (.docx) files are supported.")
         case .invalidMarkdownEncoding:
             return L10n.t("Markdown 文件不是有效的 UTF-8 文本。", "The Markdown file is not valid UTF-8 text.")
         case .unreadableWordDocument:
@@ -34,7 +38,7 @@ final class DocumentTransferService {
         guard isDirectory(directory) else { throw DocumentTransferError.destinationUnavailable }
         let fileExtension = source.pathExtension.lowercased()
         let baseName = source.deletingPathExtension().lastPathComponent
-        let destination = uniqueURL(in: directory, baseName: baseName, pathExtension: "md")
+        let destination = uniqueURL(in: directory, baseName: baseName, pathExtension: fileExtension == "pdf" ? "pdf" : "md")
 
         switch fileExtension {
         case "md", "markdown":
@@ -44,6 +48,9 @@ final class DocumentTransferService {
             }
             try MediaResources.copyAlongsideDocument(from: source, to: destination)
             try data.write(to: destination, options: .atomic)
+        case "pdf":
+            guard PDFDocument(url: source) != nil else { throw DocumentTransferError.unreadablePDF }
+            try fileManager.copyItem(at: source, to: destination)
         case "docx":
             let markdown = try markdown(fromWordDocument: source)
             try Data(markdown.utf8).write(to: destination, options: .atomic)
@@ -53,15 +60,77 @@ final class DocumentTransferService {
         return destination
     }
 
+    func exportPDFDocument(_ source: URL, to destination: URL, mode: DocumentAppearance) throws {
+        guard let pdf = PDFDocument(url: source) else { throw DocumentTransferError.unreadablePDF }
+        let data = NSMutableData()
+        guard let consumer = CGDataConsumer(data: data) else { throw DocumentTransferError.destinationUnavailable }
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let context = CGContext(consumer: consumer, mediaBox: &box, [kCGPDFContextSubject as String: "DayDream " + mode.rawValue] as CFDictionary) else { throw DocumentTransferError.destinationUnavailable }
+        let wasDark = pdf.documentAttributes?[PDFDocumentAttribute.subjectAttribute] as? String == "DayDream dark"
+        for index in 0..<pdf.pageCount {
+            guard let page = pdf.page(at: index) else { continue }
+            var bounds = page.bounds(for: .mediaBox)
+            let pageInfo = [kCGPDFContextMediaBox as String: NSData(bytes: &bounds, length: MemoryLayout<CGRect>.size)] as CFDictionary
+            context.beginPDFPage(pageInfo)
+            context.setFillColor(NSColor.white.cgColor); context.fill(bounds)
+            page.draw(with: .mediaBox, to: context)
+            if (mode == .dark) != wasDark {
+                context.setBlendMode(.difference)
+                context.setFillColor(NSColor.white.cgColor); context.fill(bounds)
+                context.setBlendMode(.normal)
+            }
+            context.endPDFPage()
+        }
+        context.closePDF()
+        try (data as Data).write(to: destination, options: .atomic)
+    }
+
     func exportMarkdown(_ markdown: String, to destination: URL, sourceURL: URL? = nil) throws {
         if let sourceURL { try MediaResources.copyAlongsideDocument(from: sourceURL, to: destination, markdown: markdown) }
         try Data(markdown.utf8).write(to: destination, options: .atomic)
     }
 
-    func exportWord(_ markdown: String, to destination: URL, sourceURL: URL? = nil) throws {
-        let attributed = attributedWordDocument(from: markdown, sourceURL: sourceURL)
+    func exportPDF(_ markdown: String, to destination: URL, sourceURL: URL? = nil, mode: DocumentAppearance = .light) throws {
+        let storage = NSTextStorage(attributedString: attributedWordDocument(from: markdown, sourceURL: sourceURL, mode: mode))
+        let manager = NSLayoutManager()
+        storage.addLayoutManager(manager)
+        let data = NSMutableData()
+        guard let consumer = CGDataConsumer(data: data) else { throw DocumentTransferError.destinationUnavailable }
+        var page = CGRect(x: 0, y: 0, width: 612, height: 792)
+        guard let context = CGContext(consumer: consumer, mediaBox: &page, [kCGPDFContextSubject as String: "DayDream " + mode.rawValue] as CFDictionary) else { throw DocumentTransferError.destinationUnavailable }
+        var previousEnd = 0
+        repeat {
+            let container = NSTextContainer(containerSize: NSSize(width: 468, height: 648))
+            container.lineFragmentPadding = 0
+            manager.addTextContainer(container)
+            manager.ensureLayout(for: container)
+            let range = manager.glyphRange(for: container)
+            context.beginPDFPage(nil)
+            context.setFillColor(mode.background.cgColor)
+            context.fill(page)
+            context.saveGState()
+            context.translateBy(x: 72, y: 720)
+            context.scaleBy(x: 1, y: -1)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+            manager.drawBackground(forGlyphRange: range, at: .zero)
+            manager.drawGlyphs(forGlyphRange: range, at: .zero)
+            NSGraphicsContext.restoreGraphicsState()
+            context.restoreGState()
+            context.endPDFPage()
+            let end = NSMaxRange(range)
+            if end >= manager.numberOfGlyphs || end <= previousEnd { break }
+            previousEnd = end
+        } while true
+        context.closePDF()
+        try (data as Data).write(to: destination, options: .atomic)
+    }
+
+    func exportWord(_ markdown: String, to destination: URL, sourceURL: URL? = nil, mode: DocumentAppearance = .light) throws {
+        let attributed = attributedWordDocument(from: markdown, sourceURL: sourceURL, mode: mode)
         let attributes: [NSAttributedString.DocumentAttributeKey: Any] = [
             .documentType: NSAttributedString.DocumentType.officeOpenXML,
+            .backgroundColor: mode.background,
             .paperSize: NSSize(width: 612, height: 792),
             .leftMargin: 72,
             .rightMargin: 72,
@@ -87,7 +156,7 @@ final class DocumentTransferService {
         return markdown(from: attributed)
     }
 
-    private func attributedWordDocument(from markdown: String, sourceURL: URL?) -> NSAttributedString {
+    private func attributedWordDocument(from markdown: String, sourceURL: URL?, mode: DocumentAppearance = .light) -> NSAttributedString {
         let document = MarkdownDocumentCodec.parse(markdown)
         let result = NSMutableAttributedString()
         var orderedNumber = 0
@@ -100,7 +169,7 @@ final class DocumentTransferService {
                    let image = NSImage(contentsOf: url) {
                     let attachment = NSTextAttachment()
                     attachment.image = image
-                    let width = min(440, image.size.width)
+                    let width = min(440, image.size.width, 600 * image.size.width / max(1, image.size.height))
                     attachment.bounds = NSRect(x: 0, y: 0, width: width, height: width * image.size.height / max(1, image.size.width))
                     result.append(NSAttributedString(attachment: attachment))
                 } else {
@@ -135,6 +204,10 @@ final class DocumentTransferService {
                 orderedNumber = 0
                 prefix = block.indentation + (checked ? "☒ " : "☐ ")
                 font = .systemFont(ofSize: 11.5)
+            case .translation:
+                orderedNumber = 0
+                prefix = ""
+                font = .systemFont(ofSize: 11.5)
             case .quote:
                 orderedNumber = 0
                 prefix = "› "
@@ -156,15 +229,17 @@ final class DocumentTransferService {
             let lineStart = result.length
             result.append(NSAttributedString(
                 string: prefix,
-                attributes: [.font: font, .foregroundColor: NSColor.black]
+                attributes: [.font: font, .foregroundColor: mode == .dark ? NSColor.white : NSColor.black]
             ))
-            let parsed = InlineMarkdown.parse(block.text)
+            let parsed: (plain: String, runs: [InlineRun])
+            if case .code = block.kind { parsed = (block.text, []) }
+            else { parsed = InlineMarkdown.parse(block.text) }
             let body = NSMutableAttributedString(
                 string: parsed.plain,
-                attributes: [.font: font, .foregroundColor: NSColor.black]
+                attributes: [.font: font, .foregroundColor: mode == .dark ? NSColor.white : NSColor.black]
             )
             for run in parsed.runs where NSMaxRange(run.range) <= body.length {
-                apply(run.style, to: body, range: run.range, baseFont: font)
+                apply(run.style, to: body, range: run.range, baseFont: font, appearance: mode.appearance)
             }
             for run in parsed.runs.reversed() {
                 guard let destination = run.style.linkDestination,
@@ -172,7 +247,7 @@ final class DocumentTransferService {
                 body.insert(
                     NSAttributedString(
                         string: " (\(destination))",
-                        attributes: [.font: font, .foregroundColor: NSColor.darkGray]
+                        attributes: [.font: font, .foregroundColor: mode == .dark ? NSColor.lightGray : NSColor.darkGray]
                     ),
                     at: NSMaxRange(run.range)
                 )
@@ -191,7 +266,8 @@ final class DocumentTransferService {
         _ style: InlineStyle,
         to text: NSMutableAttributedString,
         range: NSRange,
-        baseFont: NSFont
+        baseFont: NSFont,
+        appearance: NSAppearance
     ) {
         var font = style.fontFamily.flatMap { NSFont(name: $0, size: baseFont.pointSize) } ?? baseFont
         var traits: NSFontTraitMask = []
@@ -204,22 +280,28 @@ final class DocumentTransferService {
             font = converted
         }
         text.addAttribute(.font, value: font, range: range)
+        if style.underline { text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
+        if style.strikethrough { text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
         if let destination = style.linkDestination, let url = URL(string: destination) {
             text.addAttributes([.link: url, .foregroundColor: NSColor.systemBlue], range: range)
         }
         if let preset = style.textColor.flatMap(StyleColorPreset.init(rawValue:)) {
             text.addAttribute(
                 .foregroundColor,
-                value: DayDreamTheme.inlineTextColor(preset.rawValue, for: NSApp.effectiveAppearance),
+                value: DayDreamTheme.inlineTextColor(preset.rawValue, for: appearance),
                 range: range
             )
         }
         if let preset = style.highlight.flatMap(StyleColorPreset.init(rawValue:)) {
             text.addAttribute(
                 .backgroundColor,
-                value: DayDreamTheme.inlineHighlightColor(preset.rawValue, for: NSApp.effectiveAppearance),
+                value: DayDreamTheme.inlineHighlightColor(preset.rawValue, for: appearance),
                 range: range
             )
+        }
+        if style.strikethrough, range.length > 0,
+           let color = text.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor {
+            text.addAttribute(.foregroundColor, value: color.withAlphaComponent(color.alphaComponent * 0.45), range: range)
         }
     }
 
@@ -306,6 +388,8 @@ final class DocumentTransferService {
             else if bold && italic { text = "***\(text)***" }
             else if bold { text = "**\(text)**" }
             else if italic { text = "*\(text)*" }
+            if (attributes[.strikethroughStyle] as? Int ?? 0) != 0 { text = "~~" + text + "~~" }
+            if (attributes[.underlineStyle] as? Int ?? 0) != 0 { text = "<u>" + text + "</u>" }
             if let link = attributes[.link] {
                 let destination = (link as? URL)?.absoluteString ?? String(describing: link)
                 text = "[\(text)](\(destination))"

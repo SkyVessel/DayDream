@@ -6,6 +6,8 @@ import XCTest
 final class SlashCommandTests: XCTestCase {
     func testCatalogContainsOnlyRequestedCommands() {
         XCTAssertEqual(SlashCommandCatalog.all.map(\.kind), [
+            .body,
+            .body,
             .divider,
             .heading(level: 1),
             .heading(level: 2),
@@ -18,7 +20,7 @@ final class SlashCommandTests: XCTestCase {
             .code(language: nil),
         ])
         XCTAssertEqual(SlashCommandCatalog.all.map(\.syntax), [
-            "---", "#", "##", "###", "####", "-", "1.", "[ ]", ">", "```",
+            "page", "link page", "---", "#", "##", "###", "####", "-", "1.", "[ ]", ">", "```",
         ])
     }
 

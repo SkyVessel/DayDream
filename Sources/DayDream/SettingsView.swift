@@ -381,14 +381,22 @@ struct SettingsView: View {
 
     private func shortcutTitle(_ command: ShortcutCommand) -> String {
         switch command {
+        case .searchFiles: L10n.t("搜索文件", "Search Files")
+        case .historyBack: L10n.t("上篇笔记", "Previous note")
+        case .historyForward: L10n.t("下篇笔记", "Next note")
+        case .focusLeftPane: L10n.t("聚焦左窗格", "Focus left pane")
+        case .focusRightPane: L10n.t("聚焦右窗格", "Focus right pane")
         case .newNote: L10n.t("新建笔记", "New note")
         case .toggleSidebar: L10n.t("打开 / 关闭侧栏", "Toggle sidebar")
-        case .closeWindow: L10n.t("关闭窗口", "Close window")
+        case .closeWindow: L10n.t("关闭笔记", "Close note")
         case .renameSelection: L10n.t("重命名选中项", "Rename selection")
         case .copySelection: L10n.t("复制侧栏选中项", "Copy sidebar selection")
         case .pasteSelection: L10n.t("粘贴到侧栏", "Paste into sidebar")
         case .deleteSelection: L10n.t("删除侧栏选中项", "Delete sidebar selection")
         case .bold: L10n.t("粗体", "Bold")
+        case .underline: L10n.t("下划线", "Underline")
+        case .strikethrough: L10n.t("删除线", "Strikethrough")
+        case .toggleFocus: L10n.t("专注模式", "Focus Mode")
         case .italic: L10n.t("斜体", "Italic")
         case .highlight: L10n.t("高亮", "Highlight")
         case .textColor: L10n.t("文字颜色", "Text color")

@@ -1,7 +1,10 @@
 #!/bin/bash
-# 打包并启动 DayDream.app（无需打开 Xcode）
+# Build a signed DayDream.app without opening it.
 set -e
 cd "$(dirname "$0")/.."
+
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+HARDENED_RUNTIME="${HARDENED_RUNTIME:-0}"
 
 swift build -c release
 
@@ -26,6 +29,18 @@ sips -z 512 512 Assets/AppIcon.png --out "$ICONSET/icon_256x256@2x.png" >/dev/nu
 sips -z 512 512 Assets/AppIcon.png --out "$ICONSET/icon_512x512.png" >/dev/null
 sips -z 1024 1024 Assets/AppIcon.png --out "$ICONSET/icon_512x512@2x.png" >/dev/null
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+    CODE_SIGN_ARGS=(--force --sign "$SIGNING_IDENTITY")
+    if [[ "$HARDENED_RUNTIME" == "1" ]]; then
+        CODE_SIGN_ARGS+=(--options runtime --timestamp)
+    fi
+    codesign "${CODE_SIGN_ARGS[@]}" "$APP"
+else
+    codesign --force --sign - "$APP"
+fi
+
+codesign --verify --deep --strict "$APP"
 
 if [[ "${1:-}" != "--no-launch" ]]; then
     open "$APP"

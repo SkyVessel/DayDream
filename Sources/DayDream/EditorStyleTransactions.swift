@@ -1,6 +1,24 @@
 import AppKit
 
 extension DayDreamTextView {
+    func resetSelectedAndTypingStyle() {
+        guard retypeSession == nil else { return }
+        if selectedRange().length > 0 { applyWritingToolToSelection(.plain) }
+        resetWritingStyle()
+        requestDisplayCommit()
+    }
+
+    func toggleDecoration(_ tool: WritingTool) {
+        guard retypeSession == nil else { return }
+        if selectedRange().length > 0 {
+            applyWritingToolToSelection(tool)
+        } else {
+            activeWritingStyle = activeWritingStyle == tool ? nil : tool
+            setTypingAttributes(for: currentBlockKind(at: selectedRange().location), listIndentation: currentListIndentation(at: selectedRange().location))
+        }
+        requestDisplayCommit()
+    }
+
     func registerStyleUndo() {
         guard let storage = textStorage else { return }
         let previous = NSAttributedString(attributedString: storage)
@@ -61,6 +79,8 @@ extension DayDreamTextView {
         else if let color = tool.highlightColor { key = .dayDreamHighlight; expected = color as NSString }
         else if let font = tool.fontName { key = .dayDreamFontFamily; expected = font as NSString }
         else if tool == .bold { key = .dayDreamBold; expected = NSNumber(value: true) }
+        else if tool == .underline { key = .dayDreamUnderline; expected = NSNumber(value: true) }
+        else if tool == .strikethrough { key = .dayDreamStrikethrough; expected = NSNumber(value: true) }
         else if tool == .italic { key = .dayDreamItalic; expected = NSNumber(value: true) }
         else if tool == .inlineCode { key = .dayDreamInlineCode; expected = NSNumber(value: true) }
         else { return false }
@@ -92,15 +112,17 @@ extension DayDreamTextView {
             } while location < NSMaxRange(paragraphs)
         } else {
             if remove {
-                let key: NSAttributedString.Key = tool.isColor ? .dayDreamTextColor : tool.highlightColor != nil ? .dayDreamHighlight : tool.fontName != nil ? .dayDreamFontFamily : tool == .bold ? .dayDreamBold : tool == .italic ? .dayDreamItalic : .dayDreamInlineCode
+                let key: NSAttributedString.Key = tool.isColor ? .dayDreamTextColor : tool.highlightColor != nil ? .dayDreamHighlight : tool.fontName != nil ? .dayDreamFontFamily : tool == .bold ? .dayDreamBold : tool == .italic ? .dayDreamItalic : tool == .underline ? .dayDreamUnderline : tool == .strikethrough ? .dayDreamStrikethrough : .dayDreamInlineCode
                 storage.removeAttribute(key, range: selection)
             } else if tool.isColor { storage.addAttribute(.dayDreamTextColor, value: tool.rawValue, range: selection) }
             else if let color = tool.highlightColor { storage.addAttribute(.dayDreamHighlight, value: color, range: selection) }
             else {
-                var keys: [NSAttributedString.Key] = [.dayDreamBold, .dayDreamItalic, .dayDreamInlineCode, .dayDreamFontFamily]
+                var keys: [NSAttributedString.Key] = [.dayDreamBold, .dayDreamItalic, .dayDreamUnderline, .dayDreamStrikethrough, .dayDreamInlineCode, .dayDreamFontFamily]
                 if tool == .plain { keys += [.dayDreamTextColor, .dayDreamHighlight] }
                 for key in keys { storage.removeAttribute(key, range: selection) }
                 if tool == .bold { storage.addAttribute(.dayDreamBold, value: true, range: selection) }
+                if tool == .underline { storage.addAttribute(.dayDreamUnderline, value: true, range: selection) }
+                if tool == .strikethrough { storage.addAttribute(.dayDreamStrikethrough, value: true, range: selection) }
                 if tool == .italic { storage.addAttribute(.dayDreamItalic, value: true, range: selection) }
                 if tool == .inlineCode { storage.addAttribute(.dayDreamInlineCode, value: true, range: selection) }
                 if let font = tool.fontName { storage.addAttribute(.dayDreamFontFamily, value: font, range: selection) }

@@ -199,7 +199,7 @@ enum BlockDecorationLayout {
                     label = nil
                 case .quote:
                     label = nil
-                case .body, .heading, .code, .divider:
+                case .body, .heading, .translation, .code, .divider:
                     label = nil
                 }
                 decorations.append(BlockDecoration(

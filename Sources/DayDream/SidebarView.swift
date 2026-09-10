@@ -28,7 +28,8 @@ enum SidebarTreeProjection {
 struct SidebarView: View {
     @ObservedObject var store: WorkspaceStore
     @ObservedObject private var settings = EditorSettings.shared
-    @ObservedObject private var shortcutCenter = ShortcutCenter.shared
+    @ObservedObject var shortcutCenter = ShortcutCenter.shared
+    var onOpenReference: ((URL) -> Void)?
     let isFullScreen: Bool
     /// 打开笔记（由 WorkspaceView 注入，进入当前焦点窗格）。
     var onOpenNote: ((URL) -> Void)?
@@ -67,8 +68,7 @@ struct SidebarView: View {
                     .padding(.bottom, 14)
                 }
                 .dropDestination(for: URL.self) { items, _ in
-                    guard let source = items.first else { return false }
-                    return performDropToRoot(source)
+                    performDrops(items, onto: nil)
                 }
                 .onChange(of: shortcutCenter.sidebarNavigationURL) { _, url in
                     if let url {
@@ -110,20 +110,10 @@ struct SidebarView: View {
         }
         .onAppear { registerShortcutActions() }
         .onReceive(NotificationCenter.default.publisher(for: .dayDreamBeginRename)) { note in
+            if let target = note.userInfo?["center"] as? ShortcutCenter, target !== shortcutCenter { return }
             if let url = note.object as? URL {
                 beginRename(url, currentName: url.deletingPathExtension().lastPathComponent)
             }
-        }
-        .alert(
-            L10n.t("DayDream 无法完成该操作", "DayDream couldn’t complete that action"),
-            isPresented: Binding(
-                get: { store.errorMessage != nil },
-                set: { if !$0 { store.errorMessage = nil } }
-            )
-        ) {
-            Button(L10n.t("好", "OK")) { store.errorMessage = nil }
-        } message: {
-            Text(store.errorMessage ?? "Unknown error")
         }
         .alert(
             L10n.t("删除这篇笔记？", "Delete this note?"),
@@ -313,6 +303,9 @@ struct SidebarView: View {
                             .font(.system(size: 13.5))
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        if row.node.url.pathExtension.lowercased() == "pdf" {
+                            Text("PDF").font(.system(size: 9, weight: .medium)).foregroundStyle(.tertiary)
+                        }
                         Spacer(minLength: 0)
                     }
                     .contentShape(Rectangle())
@@ -364,8 +357,7 @@ struct SidebarView: View {
         .contextMenu { rowContextMenu(for: row.node) }
         .draggableIf(editingURL != row.node.url, payload: row.node.url)
         .dropDestination(for: URL.self) { items, _ in
-            guard let source = items.first else { return false }
-            return performDrop(source, onto: row.node)
+            performDrops(items, onto: row.node)
         } isTargeted: { targeted in
             if targeted {
                 dropTargetURL = row.node.url
@@ -435,15 +427,18 @@ struct SidebarView: View {
 
     private func importDocument() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!, .init(filenameExtension: "docx")!]
+        panel.allowedContentTypes = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!, .init(filenameExtension: "docx")!, .pdf]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.prompt = L10n.t("导入", "Import")
+        let appearancePicker = DocumentAppearancePicker(selection: .current)
+        panel.accessoryView = appearancePicker
         guard panel.runModal() == .OK, let source = panel.url else { return }
 
         do {
             let url = try store.importDocument(from: source)
+            appearancePicker.selection.store(for: url)
             store.select(url)
             onOpenNote?(url)
         } catch {
@@ -499,6 +494,10 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func rowContextMenu(for node: WorkspaceNode) -> some View {
+        if node.kind == .note {
+            Button(L10n.t("在侧栏中打开", "Open in Side Pane")) { onOpenReference?(node.url) }
+            Divider()
+        }
         if node.kind == .folder {
             Button(L10n.t("新建笔记", "New Note")) { createNote(in: node.url) }
             Button(L10n.t("新建文件夹", "New Folder")) { createFolder(in: node.url) }
@@ -550,6 +549,23 @@ struct SidebarView: View {
     }
 
     /// 把拖拽物放到某一行上：文件夹行 = 放入其中；笔记行 = 放入它所在的文件夹。
+    private func performDrops(_ sources: [URL], onto target: WorkspaceNode?) -> Bool {
+        guard !sources.isEmpty else { return false }
+        var appearance = DocumentAppearance.current
+        if sources.contains(where: { !$0.standardizedFileURL.path.hasPrefix(store.rootURL.path + "/") }) {
+            let alert = NSAlert()
+            alert.messageText = L10n.t("导入笔记", "Import Documents")
+            let picker = DocumentAppearancePicker(selection: appearance)
+            alert.accessoryView = picker
+            alert.addButton(withTitle: L10n.t("导入", "Import"))
+            alert.addButton(withTitle: L10n.t("取消", "Cancel"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            appearance = picker.selection
+        }
+        let folder = target.map { $0.kind == .folder ? $0.url : $0.url.deletingLastPathComponent() }
+        return sources.map { performDrop($0, toFolder: folder, expandOnSuccess: target?.kind == .folder ? folder : nil, appearance: appearance) }.contains(true)
+    }
+
     private func performDrop(_ source: URL, onto target: WorkspaceNode) -> Bool {
         let destinationFolder = (target.kind == .folder
             ? target.url
@@ -562,10 +578,21 @@ struct SidebarView: View {
         performDrop(source, toFolder: nil, expandOnSuccess: nil)
     }
 
-    private func performDrop(_ source: URL, toFolder folder: URL?, expandOnSuccess: URL?) -> Bool {
+    private func performDrop(_ source: URL, toFolder folder: URL?, expandOnSuccess: URL?, appearance: DocumentAppearance? = nil) -> Bool {
         let standardized = source.standardizedFileURL
-        // 只接受库内部的拖拽；来自 Finder 的外部文件直接拒绝。
-        guard standardized.path.hasPrefix(store.rootURL.path + "/") else { return false }
+        if !standardized.path.hasPrefix(store.rootURL.path + "/") {
+            do {
+                let imported = try store.importDocument(from: standardized, into: folder ?? store.rootURL)
+                (appearance ?? .current).store(for: imported)
+                if let expandOnSuccess { expandedFolders.insert(expandOnSuccess) }
+                store.select(imported)
+                onOpenNote?(imported)
+                return true
+            } catch {
+                store.errorMessage = error.localizedDescription
+                return false
+            }
+        }
 
         let destination = (folder ?? store.rootURL).standardizedFileURL
         // 拖到自身 / 自己的后代 / 原地不动：拒绝（动画弹回）。
@@ -650,7 +677,7 @@ struct SidebarView: View {
     private func registerShortcutActions() {
         shortcutCenter.renameSelection = { [store] in
             if let url = store.selectedURL {
-                NotificationCenter.default.post(name: .dayDreamBeginRename, object: url)
+                NotificationCenter.default.post(name: .dayDreamBeginRename, object: url, userInfo: ["center": shortcutCenter])
             }
         }
         shortcutCenter.copySelection = { [store] in
@@ -666,7 +693,7 @@ struct SidebarView: View {
             ) as? [URL], let source = urls.first else { return }
             do {
                 let target = store.selectedURL.map { url -> URL in
-                    url.pathExtension.lowercased() == "md"
+                    ["md", "markdown", "pdf"].contains(url.pathExtension.lowercased())
                         ? url.deletingLastPathComponent()
                         : url
                 }

@@ -54,13 +54,14 @@ struct EditorView: NSViewRepresentable {
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude)
 
-        let scrollView = NSScrollView()
+        let scrollView = EditorScrollView()
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
+        scrollView.appearance = DocumentAppearance.stored(for: documentURL)?.appearance
         scrollView.backgroundColor = DayDreamTheme.background(for: scrollView.effectiveAppearance)
 
         context.coordinator.loadedURL = documentURL
@@ -85,6 +86,7 @@ struct EditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        scrollView.appearance = DocumentAppearance.stored(for: documentURL)?.appearance
         scrollView.backgroundColor = DayDreamTheme.background(for: scrollView.effectiveAppearance)
         context.coordinator.onMarkdownChange = onMarkdownChange
         guard let textView = scrollView.documentView as? DayDreamTextView else { return }
@@ -93,11 +95,22 @@ struct EditorView: NSViewRepresentable {
         if !context.coordinator.hasLoadedDocument
             || context.coordinator.loadedURL != documentURL
             || context.coordinator.loadedRevision != reloadRevision {
+            let oldURL = context.coordinator.loadedURL
+            let selection = textView.selectedRange()
+            let isRename = oldURL != documentURL && oldURL?.deletingLastPathComponent() == documentURL?.deletingLastPathComponent()
+                && oldURL.map { !FileManager.default.fileExists(atPath: $0.path) } == true
+                && textView.exportMarkdown() == markdown
             context.coordinator.loadedURL = documentURL
             context.coordinator.loadedRevision = reloadRevision
             context.coordinator.hasLoadedDocument = true
             textView.documentURL = documentURL
-            textView.load(markdown: markdown)
+            if !isRename {
+                textView.load(markdown: markdown)
+                if oldURL == documentURL {
+                    let location = min(selection.location, textView.string.utf16.count)
+                    textView.setSelectedRange(NSRange(location: location, length: min(selection.length, textView.string.utf16.count - location)))
+                }
+            }
         }
     }
 
@@ -110,5 +123,20 @@ struct EditorView: NSViewRepresentable {
         init(onMarkdownChange: @escaping (String) -> Void) {
             self.onMarkdownChange = onMarkdownChange
         }
+    }
+}
+
+/// Wheel and trackpad momentum events follow the viewport in Ultra Focus.
+final class EditorScrollView: NSScrollView {
+    override func scrollWheel(with event: NSEvent) {
+        guard let editor = documentView as? DayDreamTextView, editor.isUltraFocus else {
+            super.scrollWheel(with: event)
+            return
+        }
+        editor.ultraScrollTimer?.invalidate(); editor.ultraScrollTimer = nil
+        editor.isUserScrollingUltra = true
+        defer { editor.isUserScrollingUltra = false }
+        super.scrollWheel(with: event)
+        editor.followUltraFocusViewport()
     }
 }

@@ -26,6 +26,7 @@ struct WritingTool: RawRepresentable, Codable, Hashable, Identifiable {
     private init(_ value: String) { rawValue = value }
     init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
     func encode(to encoder: Encoder) throws { var container = encoder.singleValueContainer(); try container.encode(rawValue) }
+    static let underline = Self("underline"), strikethrough = Self("strikethrough")
     static let bold = Self("bold"), italic = Self("italic"), georgia = Self("georgia"), menlo = Self("menlo")
     static let pink = Self("pink"), blue = Self("blue"), green = Self("green"), yellow = Self("yellow")
     static let highlight = Self("highlight"), inlineCode = Self("inlineCode"), plain = Self("plain")
@@ -51,6 +52,7 @@ struct WritingTool: RawRepresentable, Codable, Hashable, Identifiable {
         case "block:bullet": .bullet
         case "block:numbered": .numbered
         case "block:todo": .todo(checked: false)
+        case "block:translation": .body
         case "block:quote": .quote
         case "block:code": .code(language: nil)
         case "block:divider": .divider
@@ -70,6 +72,8 @@ struct WritingTool: RawRepresentable, Codable, Hashable, Identifiable {
         if highlightColor != nil { return L10n.t("高光（跟随设置）", "Highlight (from Settings)") }
         switch self {
         case .bold: return L10n.t("粗体", "Bold")
+        case .underline: return L10n.t("下划线", "Underline")
+        case .strikethrough: return L10n.t("删除线", "Strikethrough")
         case .italic: return L10n.t("斜体", "Italic")
         case .pink: return L10n.t("粉色", "Pink")
         case .blue: return L10n.t("蓝色", "Blue")
@@ -87,13 +91,15 @@ struct WritingTool: RawRepresentable, Codable, Hashable, Identifiable {
         switch self {
         case .bold: return "bold"
         case .italic: return "italic"
+        case .underline: return "underline"
+        case .strikethrough: return "strikethrough"
         case .inlineCode: return "chevron.left.forwardslash.chevron.right"
         case .plain: return "arrow.uturn.backward"
         default: return "circle.fill"
         }
     }
     static var allCases: [Self] {
-        let styles: [Self] = [.bold, .italic, .inlineCode, .plain, .pink, .blue, .green, .yellow]
+        let styles: [Self] = [.bold, .italic, .underline, .strikethrough, .inlineCode, .plain, .pink, .blue, .green, .yellow]
         let highlights: [Self] = [.highlight]
         let blocks = ["body", "h1", "h2", "h3", "h4", "bullet", "numbered", "todo", "quote", "code", "divider"].map { Self("block:" + $0) }
         let fonts = NSFontManager.shared.availableFontFamilies.sorted().map(Self.font) + EditorSettings.fontChoices.map { Self.font($0.id) }

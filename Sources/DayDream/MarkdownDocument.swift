@@ -8,13 +8,15 @@ enum MarkdownBlockKind: Equatable, Hashable, Sendable {
     case numbered
     case todo(checked: Bool)
     case quote
+    // Legacy on-disk block retained for lossless loading; no translation actions exist.
+    case translation
     case code(language: String?)
 
     var isList: Bool {
         switch self {
         case .bullet, .numbered, .todo:
             return true
-        case .body, .heading, .quote, .code, .divider:
+        case .body, .heading, .quote, .translation, .code, .divider:
             return false
         }
     }
@@ -105,6 +107,9 @@ enum MarkdownDocumentCodec {
             case .divider:
                 orderedCounts.removeAll()
                 lines.append("---")
+            case .translation:
+                orderedCounts.removeAll()
+                lines.append("!! " + block.text)
             case .quote:
                 orderedCounts.removeAll()
                 lines.append("> " + block.text)
@@ -206,6 +211,7 @@ enum MarkdownDocumentCodec {
     }
 
     private static func parseLine(_ line: String) -> MarkdownBlock {
+        if line == "!!" || line.hasPrefix("!! ") { return .init(kind: .translation, text: String(line.dropFirst(min(3, line.count)))) }
         let thematic = line.trimmingCharacters(in: .whitespaces).filter { !$0.isWhitespace }
         if thematic.count >= 3, let first = thematic.first, "-*_".contains(first), thematic.allSatisfy({ $0 == first }) {
             return MarkdownBlock(kind: .divider, text: "")

@@ -11,8 +11,16 @@ extension DayDreamTextView {
     func handleEditorShortcut(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown, !hasMarkedText() else { return false }
         let preferences = ShortcutPreferences.shared
+        if preferences.shortcut(for: .toggleFocus).matches(event) {
+            EditorSettings.shared.focusModeEnabled.toggle()
+            return true
+        }
+        for command in [ShortcutCommand.underline, .strikethrough] where preferences.shortcut(for: command).matches(event) {
+            toggleDecoration(command == .underline ? .underline : .strikethrough)
+            return true
+        }
         if preferences.shortcut(for: .resetWritingStyle).matches(event) {
-            resetWritingStyle()
+            resetSelectedAndTypingStyle()
             writingBadgeTimer?.invalidate(); writingBadge?.removeFromSuperview(); writingBadge = nil
             requestDisplayCommit()
             return true
@@ -24,6 +32,18 @@ extension DayDreamTextView {
                 cycleWritingBar(index)
                 return true
             }
+        }
+        // Route formatting to the actual editor, including Finder preview windows.
+        for command in [ShortcutCommand.bold, .italic, .highlight, .textColor, .inlineCode] where preferences.shortcut(for: command).matches(event) {
+            switch command {
+            case .bold: toggleBold()
+            case .italic: toggleItalic()
+            case .highlight: toggleHighlight()
+            case .textColor: toggleTextColor()
+            case .inlineCode: toggleInlineCode()
+            default: break
+            }
+            return true
         }
         guard event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command else { return false }
         switch event.charactersIgnoringModifiers?.lowercased() {

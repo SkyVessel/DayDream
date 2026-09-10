@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PDFKit
 
 /// 唯一编辑器中的当前文档与防抖落盘。
 /// 磁盘上的 .md 文件是唯一真相源；切换文档前会先保存当前内容。
@@ -9,6 +10,11 @@ final class DocumentController: ObservableObject {
     @Published private(set) var markdown = ""
     @Published private(set) var externalEditConflict: URL?
     @Published private(set) var reloadRevision = 0
+    @Published private(set) var history = NoteHistory()
+    private var navigatingHistory = false
+    var didSave: ((URL, String) -> Void)?
+
+    var isPDF: Bool { currentURL?.pathExtension.lowercased() == "pdf" }
 
     private let autosaveDelay: TimeInterval
     private let fileManager: FileManager
@@ -20,16 +26,30 @@ final class DocumentController: ObservableObject {
         self.fileManager = fileManager
     }
 
+    private static func editableContents(_ data: Data, url: URL) -> String? {
+        if url.pathExtension.lowercased() == "pdf" { return PDFDocument(data: data) != nil ? "" : nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     func open(_ url: URL) {
         let standardized = url.standardizedFileURL
         guard standardized != currentURL else { return }
         if currentURL != nil, !flush() { return }
         guard let data = try? Data(contentsOf: standardized),
-              let contents = String(data: data, encoding: .utf8) else { return }
+              let contents = Self.editableContents(data, url: standardized) else { return }
         currentURL = standardized
+        if !navigatingHistory { history.record(standardized) }
         markdown = contents
         lastKnownDiskData = data
         externalEditConflict = nil
+    }
+
+    func navigateHistory(by delta: Int) {
+        guard let url = history.destination(by: delta) else { return }
+        navigatingHistory = true
+        defer { navigatingHistory = false }
+        open(url)
+        if currentURL == url { history.move(by: delta) }
     }
 
     func clear(saving: Bool = true) {
@@ -43,6 +63,7 @@ final class DocumentController: ObservableObject {
     }
 
     func updateMarkdown(_ markdown: String) {
+        guard !isPDF else { return }
         self.markdown = markdown
         pendingSave?.cancel()
         guard currentURL != nil else { return }
@@ -61,6 +82,7 @@ final class DocumentController: ObservableObject {
         guard let url = currentURL,
               fileManager.fileExists(atPath: url.path),
               let diskData = try? Data(contentsOf: url) else { return false }
+        if isPDF { return true }
         let desiredData = Data(markdown.utf8)
         if let lastKnownDiskData,
            diskData != lastKnownDiskData,
@@ -71,12 +93,14 @@ final class DocumentController: ObservableObject {
         guard diskData != desiredData else {
             lastKnownDiskData = diskData
             externalEditConflict = nil
+            didSave?(url, markdown)
             return true
         }
         do {
             try desiredData.write(to: url, options: .atomic)
             lastKnownDiskData = desiredData
             externalEditConflict = nil
+            didSave?(url, markdown)
             return true
         } catch {
             return false
@@ -88,7 +112,7 @@ final class DocumentController: ObservableObject {
         pendingSave = nil
         guard let url = currentURL,
               let data = try? Data(contentsOf: url),
-              let contents = String(data: data, encoding: .utf8) else { return }
+              let contents = Self.editableContents(data, url: url) else { return }
         markdown = contents
         lastKnownDiskData = data
         externalEditConflict = nil
@@ -96,6 +120,7 @@ final class DocumentController: ObservableObject {
     }
 
     func overwriteExternalChanges() {
+        guard !isPDF else { return }
         pendingSave?.cancel()
         pendingSave = nil
         guard let url = currentURL,
@@ -107,6 +132,7 @@ final class DocumentController: ObservableObject {
     }
 
     func applyStructureChange(_ change: WorkspaceStructureChange) {
+        history.apply(change)
         guard let currentURL else { return }
         switch change {
         case let .moved(from, to):

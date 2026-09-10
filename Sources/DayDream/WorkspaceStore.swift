@@ -111,6 +111,7 @@ final class WorkspaceStore: ObservableObject {
         let url = uniqueURL(in: parent, baseName: "Untitled", pathExtension: "md")
         try Data().write(to: url, options: .atomic)
         try reload()
+        NotificationCenter.default.post(name: .dayDreamLibraryContentsChanged, object: rootURL)
         return url
     }
 
@@ -125,10 +126,11 @@ final class WorkspaceStore: ObservableObject {
     @discardableResult
     func importDocument(
         from source: URL,
+        into folder: URL? = nil,
         service: DocumentTransferService = DocumentTransferService()
     ) throws -> URL {
         beforeMutation?()
-        let parent = try validatedDirectory(parentForNewNode())
+        let parent = try validatedDirectory(folder ?? parentForNewNode())
         let url = try service.importDocument(from: source, into: parent)
         try reload()
         return url
@@ -138,14 +140,14 @@ final class WorkspaceStore: ObservableObject {
     func rename(_ url: URL, to proposedName: String) throws -> URL {
         beforeMutation?()
         let source = url.standardizedFileURL
-        let isNote = source.pathExtension.lowercased() == "md"
+        let isNote = ["md", "markdown", "pdf"].contains(source.pathExtension.lowercased())
         let cleaned = sanitizedName(proposedName)
         guard !cleaned.isEmpty else {
             throw WorkspaceStoreError.invalidName
         }
 
         let destination = source.deletingLastPathComponent().appending(
-            path: isNote ? cleaned + ".md" : cleaned,
+            path: isNote ? cleaned + "." + source.pathExtension : cleaned,
             directoryHint: isNote ? .notDirectory : .isDirectory
         )
         if destination != source, fileManager.fileExists(atPath: destination.path) {
@@ -213,14 +215,14 @@ final class WorkspaceStore: ObservableObject {
         guard source.path.hasPrefix(rootURL.path + "/") else {
             throw WorkspaceStoreError.outsideLibrary
         }
-        let isNote = source.pathExtension.lowercased() == "md"
+        let isNote = ["md", "markdown", "pdf"].contains(source.pathExtension.lowercased())
         let baseName = isNote
             ? source.deletingPathExtension().lastPathComponent
             : source.lastPathComponent
         let destination = uniqueURL(
             in: source.deletingLastPathComponent(),
             baseName: baseName + " copy",
-            pathExtension: isNote ? "md" : nil
+            pathExtension: isNote ? source.pathExtension : nil
         )
         try fileManager.copyItem(at: source, to: destination)
         try reload()
@@ -239,7 +241,7 @@ final class WorkspaceStore: ObservableObject {
         guard fileManager.fileExists(atPath: src.path, isDirectory: &isDirectory) else {
             throw WorkspaceStoreError.folderUnavailable
         }
-        guard isDirectory.boolValue || src.pathExtension.lowercased() == "md" else {
+        guard isDirectory.boolValue || ["md", "markdown", "pdf"].contains(src.pathExtension.lowercased()) else {
             throw WorkspaceStoreError.unsupportedItem
         }
         // 目标不能在源内部（文件夹粘贴到自身或自己的后代）。
@@ -254,7 +256,7 @@ final class WorkspaceStore: ObservableObject {
         let destination = uniqueURL(
             in: destinationFolder,
             baseName: baseName,
-            pathExtension: isDirectory.boolValue ? nil : "md"
+            pathExtension: isDirectory.boolValue ? nil : src.pathExtension
         )
         try MediaResources.copyAlongsideDocument(from: src, to: destination)
         try fileManager.copyItem(at: src, to: destination)
@@ -281,7 +283,7 @@ final class WorkspaceStore: ObservableObject {
 
     func parentForNewNode() -> URL? {
         guard let selectedURL else { return nil }
-        return selectedURL.pathExtension.lowercased() == "md"
+        return ["md", "markdown", "pdf"].contains(selectedURL.pathExtension.lowercased())
             ? selectedURL.deletingLastPathComponent()
             : selectedURL
     }
@@ -324,7 +326,7 @@ final class WorkspaceStore: ObservableObject {
             if values.isDirectory == true {
                 return WorkspaceNode(url: url.standardizedFileURL, kind: .folder, children: try scanDirectory(url))
             }
-            guard url.pathExtension.lowercased() == "md" else { return nil }
+            guard ["md", "markdown", "pdf"].contains(url.pathExtension.lowercased()) else { return nil }
             return WorkspaceNode(url: url.standardizedFileURL, kind: .note, children: [])
         }.sorted { lhs, rhs in
             if lhs.kind != rhs.kind { return lhs.kind == .folder }

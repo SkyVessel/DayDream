@@ -4,6 +4,8 @@ import AppKit
 struct InlineStyle: Equatable, Sendable {
     var bold = false
     var italic = false
+    var underline = false
+    var strikethrough = false
     var code = false
     var linkDestination: String?
     var imageDestination: String?
@@ -13,7 +15,7 @@ struct InlineStyle: Equatable, Sendable {
     var media: MediaCard?
 
     var isPlain: Bool {
-        !bold && !italic && !code && linkDestination == nil && imageDestination == nil
+        !bold && !italic && !underline && !strikethrough && !code && linkDestination == nil && imageDestination == nil
             && textColor == nil && highlight == nil && fontFamily == nil && media == nil
     }
 }
@@ -136,6 +138,18 @@ enum InlineMarkdown {
                           style: inner, plain: &plain, runs: &runs)
                 rest = rest[close.upperBound...]
 
+            case .underline, .strikethrough:
+                let token = marker.kind == .underline ? "</u>" : "~~"
+                guard let close = rest.range(of: token, range: marker.range.upperBound..<rest.endIndex) else {
+                    appendStyled(String(rest[marker.range]), style: style, plain: &plain, runs: &runs)
+                    rest = rest[marker.range.upperBound...]
+                    continue
+                }
+                var inner = style
+                if marker.kind == .underline { inner.underline = true } else { inner.strikethrough = true }
+                parseInto(String(rest[marker.range.upperBound..<close.lowerBound]), style: inner, plain: &plain, runs: &runs)
+                rest = rest[close.upperBound...]
+
             case .boldItalic, .bold, .italic:
                 let token: String
                 switch marker.kind {
@@ -170,6 +184,7 @@ enum InlineMarkdown {
         case link(label: String, destination: String)
         case image(label: String, destination: String)
         case span(css: String)
+        case underline, strikethrough
         case boldItalic
         case bold
         case italic
@@ -188,6 +203,15 @@ enum InlineMarkdown {
            let closing = text.range(of: "</figure>", range: opening.upperBound..<text.endIndex),
            let card = MediaCard.parse(String(text[opening.lowerBound..<closing.upperBound])) {
             candidates.append((opening.lowerBound, { Marker(kind: .media(card), range: opening.lowerBound..<closing.upperBound) }))
+        }
+        if let opening = text.range(of: "[["),
+           let closing = text.range(of: "]]", range: opening.upperBound..<text.endIndex) {
+            let body = String(text[opening.upperBound..<closing.lowerBound])
+            let parts = body.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            if let target = parts.first, !target.isEmpty, !body.contains("\n") {
+                let label = parts.count == 2 ? parts[1] : target
+                candidates.append((opening.lowerBound, { Marker(kind: .link(label: label, destination: NoteLinks.destination(target)), range: opening.lowerBound..<closing.upperBound) }))
+            }
         }
         if let link = firstLinkOrImageMarker(in: text) {
             candidates.append((link.range.lowerBound, { link }))
@@ -210,6 +234,11 @@ enum InlineMarkdown {
             candidates.append((spanOpen.lowerBound, {
                 Marker(kind: .span(css: css), range: spanOpen.lowerBound..<closeQuote.upperBound)
             }))
+        }
+        for (token, kind) in [("<u>", MarkerKind.underline), ("~~", MarkerKind.strikethrough)] {
+            if let range = text.range(of: token) {
+                candidates.append((range.lowerBound, { Marker(kind: kind, range: range) }))
+            }
         }
         if let triple = text.range(of: "***") {
             candidates.append((triple.lowerBound, {
@@ -331,6 +360,8 @@ enum InlineMarkdown {
             let style = InlineStyle(
                 bold: attributes[.dayDreamBold] as? Bool ?? false,
                 italic: attributes[.dayDreamItalic] as? Bool ?? false,
+                underline: attributes[.dayDreamUnderline] as? Bool ?? false,
+                strikethrough: attributes[.dayDreamStrikethrough] as? Bool ?? false,
                 code: attributes[.dayDreamInlineCode] as? Bool ?? false,
                 linkDestination: attributes[.dayDreamLink] as? String,
                 imageDestination: attributes[.dayDreamImage] as? String,
@@ -365,7 +396,9 @@ enum InlineMarkdown {
                 index += 1
             }
             if let linkDestination {
-                inner = "[\(inner)](\(linkDestination))"
+                if let target = NoteLinks.target(linkDestination) {
+                    inner = inner == target ? "[[\(target)]]" : "[[\(target)|\(inner)]]"
+                } else { inner = "[\(inner)](\(linkDestination))" }
             } else if let imageDestination {
                 inner = "![\(inner)](\(imageDestination))"
             }
@@ -376,6 +409,14 @@ enum InlineMarkdown {
 
     private static func wrapInline(_ text: String, style: InlineStyle) -> String {
         guard !text.isEmpty else { return "" }
+        if style.underline || style.strikethrough {
+            var inner = style
+            inner.underline = false; inner.strikethrough = false
+            var result = wrapInline(text, style: inner)
+            if style.strikethrough { result = "~~" + result + "~~" }
+            if style.underline { result = "<u>" + result + "</u>" }
+            return result
+        }
         if style.code {
             let delimiter = String(
                 repeating: "`",

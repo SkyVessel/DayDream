@@ -117,7 +117,7 @@ enum ShortcutEventRouter {
         switch command {
         case .renameSelection, .copySelection, .pasteSelection, .deleteSelection:
             return isSidebarFocused ? command : nil
-        case .bold, .italic, .highlight, .textColor, .inlineCode:
+        case .bold, .italic, .underline, .strikethrough, .highlight, .textColor, .inlineCode:
             return isSidebarFocused ? nil : command
         default:
             return command
@@ -135,7 +135,8 @@ final class ShortcutEventMonitor {
 
     func install() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged, .leftMouseDown]) { event in
+            if event.type == .leftMouseDown { PaneShortcutRouting.routeMouse(event); return event }
             if event.type != .keyDown {
                 (self.writingEditor ?? NSApp.keyWindow?.firstResponder as? DayDreamTextView)?.handleWritingBarRelease(event)
                 return event
@@ -148,25 +149,38 @@ final class ShortcutEventMonitor {
 
             if let editor = NSApp.keyWindow?.firstResponder as? DayDreamTextView,
                editor.hasMarkedText() { return event }
+            if let panel = event.window as? LibrarySearchPanel { return panel.routeKey(event) }
+            let activeCenter = ShortcutCenter.shared
             if let editor = NSApp.keyWindow?.firstResponder as? DayDreamTextView,
+               !activeCenter.isSidebarFocused,
+               (activeCenter.documentResponder == nil || activeCenter.documentResponder === editor),
                editor.handleEditorShortcut(event) {
                 if editor.writingBarTrigger != nil { self.writingEditor = editor }
                 return nil
             }
+            let zoomModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            if zoomModifiers.subtracting(.shift) == .command,
+               ["+", "=", "-", "_"].contains(event.charactersIgnoringModifiers ?? ""),
+               let responder = activeCenter.documentResponder, responder.performKeyEquivalent(with: event) { return nil }
             let preferences = ShortcutPreferences.shared
-            let center = ShortcutCenter.shared
+            let center = activeCenter
             if let command = ShortcutEventRouter.command(
                 matching: event,
                 preferences: preferences,
                 isSidebarFocused: center.isSidebarFocused
             ) {
                 switch command {
+                case .searchFiles: center.searchFiles()
+                case .historyBack: center.historyBack()
+                case .historyForward: center.historyForward()
+                case .focusLeftPane: center.focusLeftPane()
+                case .focusRightPane: center.focusRightPane()
                 case .newNote:
                     center.newNote()
                 case .toggleSidebar:
                     center.toggleSidebar()
                 case .closeWindow:
-                    (NSApp.keyWindow ?? center.mainWindow)?.performClose(nil)
+                    center.closeNote()
                 case .renameSelection:
                     center.renameSelection()
                 case .copySelection:
@@ -177,6 +191,10 @@ final class ShortcutEventMonitor {
                     center.deleteSelection()
                 case .bold:
                     center.toggleBold()
+                case .toggleFocus:
+                    EditorSettings.shared.focusModeEnabled.toggle()
+                case .underline, .strikethrough:
+                    (NSApp.keyWindow?.firstResponder as? DayDreamTextView)?.toggleDecoration(command == .underline ? .underline : .strikethrough)
                 case .italic:
                     center.toggleItalic()
                 case .highlight:

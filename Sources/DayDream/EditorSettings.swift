@@ -215,7 +215,7 @@ final class EditorSettings: ObservableObject {
             .map { CGFloat($0) } ?? DayDreamTheme.lineHeightMultiple
         spaceWidth = (defaults.object(forKey: Keys.spaceWidth) as? Double).map { CGFloat($0) } ?? 0
         fontFamily = defaults.string(forKey: Keys.fontFamily) ?? ""
-        language = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .zh
+        language = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .en
         appearanceMode = AppAppearanceMode(rawValue: defaults.string(forKey: Keys.appearanceMode) ?? "") ?? .system
         highlightPreset = defaults.string(forKey: Keys.highlightPreset) ?? StyleColorPreset.caret.rawValue
         textColorPreset = defaults.string(forKey: Keys.textColorPreset) ?? StyleColorPreset.caret.rawValue

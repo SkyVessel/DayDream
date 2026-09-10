@@ -92,7 +92,7 @@ enum DayDreamTheme {
         let weight: NSFont.Weight
 
         switch blockKind {
-        case .body, .bullet, .numbered, .todo, .quote, .divider:
+        case .body, .bullet, .numbered, .todo, .quote, .translation, .divider:
             pointSize = baseFontSize
             weight = .regular
             // 行距：两行之间的距离，由设置页调整。
@@ -166,6 +166,8 @@ enum DayDreamTheme {
         textColorName: String?,
         highlightName: String?,
         fontFamily: String? = nil,
+        underline: Bool = false,
+        strikethrough: Bool = false,
         for appearance: NSAppearance
     ) -> [NSAttributedString.Key: Any] {
         var attributes = base
@@ -212,6 +214,14 @@ enum DayDreamTheme {
         }
         if let highlightName {
             attributes[.dayDreamHighlight] = highlightName
+        }
+        attributes[.underlineStyle] = underline || linkDestination.flatMap(NoteLinks.target) != nil ? NSUnderlineStyle.single.rawValue : 0
+        attributes[.strikethroughStyle] = strikethrough ? NSUnderlineStyle.single.rawValue : 0
+        if underline { attributes[.dayDreamUnderline] = true }
+        if strikethrough {
+            attributes[.dayDreamStrikethrough] = true
+            let color = attributes[.foregroundColor] as? NSColor ?? text(for: appearance)
+            attributes[.foregroundColor] = color.withAlphaComponent(color.alphaComponent * 0.45)
         }
         return attributes
     }
