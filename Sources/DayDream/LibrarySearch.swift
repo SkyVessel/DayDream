@@ -148,7 +148,8 @@ private struct LibrarySearchView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 4) {
-                        ForEach(Array(model.results.enumerated()), id: \.element.id) { index, result in
+                        ForEach(model.results) { result in
+                            let index = model.results.firstIndex(where: { $0.id == result.id }) ?? 0
                             Button { model.selected = index; model.open(inReference: false) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack(spacing: 10) {
@@ -165,13 +166,16 @@ private struct LibrarySearchView: View {
                                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                     .background(model.selected == index ? Color.primary.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 12))
                                     .contentShape(Rectangle())
-                            }.buttonStyle(.plain).id(index)
+                            }.buttonStyle(.plain).id(result.id)
                         }
                         if model.results.isEmpty && !model.searching {
                             Text(L10n.t("未找到文件", "No files found")).foregroundStyle(.secondary).padding(28)
                         }
                     }.padding(10)
-                }.onChange(of: model.selected) { _, index in withAnimation(.easeOut(duration: 0.13)) { proxy.scrollTo(index, anchor: .center) } }
+                }.onChange(of: model.selected) { _, index in
+                    guard model.results.indices.contains(index) else { return }
+                    withAnimation(.easeOut(duration: 0.13)) { proxy.scrollTo(model.results[index].id, anchor: .center) }
+                }
             }
             HStack {
                 Text(L10n.t("↑↓ 选择", "↑↓ Select")); Spacer()

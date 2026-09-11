@@ -48,6 +48,39 @@ final class PageSearchRegressionTests: XCTestCase {
         XCTAssertNil(PageTitles.title(in: "Body\n# Other"))
     }
 
+    @MainActor
+    func testFilteringLetterAfterInitialPreviewKeepsCorrectResultAndOpenTarget() async throws {
+        let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
+        let letter = root.appendingPathComponent("Letter.md")
+        try "Letter preview".write(to: letter, atomically: true, encoding: .utf8)
+        try "Ideas preview".write(to: root.appendingPathComponent("Ideas and DayDreaming.md"), atomically: true, encoding: .utf8)
+        let model = LibrarySearchModel(root: root)
+        func waitForPreview() async throws {
+            for _ in 0..<200 {
+                if !model.searching, let first = model.results.first, first.preview != "…" { return }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTFail("Search and preview did not finish")
+        }
+        model.search()
+        try await waitForPreview()
+        XCTAssertEqual(model.results.first?.title, "Ideas and DayDreaming")
+        for query in ["l", "le", "let", "letter"] { model.query = query }
+        try await waitForPreview()
+        XCTAssertEqual(model.results.map(\.url), [letter])
+        XCTAssertEqual(model.results.first?.preview, "Letter preview")
+        var opened: URL?
+        model.choose = { url, _ in opened = url }
+        model.open(inReference: false)
+        XCTAssertEqual(opened, letter)
+        model.query = ""
+        try await waitForPreview()
+        XCTAssertEqual(model.results.count, 2)
+        model.query = "LETTER"
+        try await waitForPreview()
+        XCTAssertEqual(model.results.map(\.url), [letter])
+    }
+
     func testReferenceRewritePreservesCodeAndCustomAliases() throws {
         let root = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
         let old = root.appendingPathComponent("Untitled.md")
