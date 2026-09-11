@@ -81,6 +81,7 @@ final class MediaCardView: NSView {
     var onMove: ((NSPoint, Bool) -> Void)?
     var onDelete: (() -> Void)?
     private var thumbnail: NSImage?
+    var exportPreview: NSImage? { thumbnail }
     private var resolvedURL: URL?
     private var provider: LPMetadataProvider?
     private var imageTask: URLSessionDataTask?
@@ -90,7 +91,7 @@ final class MediaCardView: NSView {
     private var dragged = false
     private var loading = true
 
-    init(card: MediaCard, documentURL: URL?) {
+    init(card: MediaCard, documentURL: URL?, exportPreview: NSImage? = nil, loadPreview: Bool = true) {
         self.card = card
         super.init(frame: .zero)
         wantsLayer = true
@@ -100,7 +101,8 @@ final class MediaCardView: NSView {
         setAccessibilityLabel(card.title)
         toolTip = L10n.t("拖动排版 · 双击打开 · 右键移除", "Drag to arrange · Double-click to open · Right-click to remove")
         resolvedURL = card.resolvedURL(documentURL: documentURL)
-        loadPreview()
+        thumbnail = exportPreview
+        if loadPreview { self.loadPreview() } else { loading = false }
     }
     required init?(coder: NSCoder) { fatalError() }
     override var isFlipped: Bool { true }

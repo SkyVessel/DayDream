@@ -109,6 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         workspaceWindow?.window?.makeKeyAndOrderFront(nil)
     }
 
+    func searchWorkspace() {
+        showWorkspace()
+        workspaceWindow?.requestSearch()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows { showWorkspace() }
         return false
@@ -180,6 +185,22 @@ private extension NSView {
 final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
     private weak var left: WorkspaceCoordinator?
     private weak var right: WorkspaceCoordinator?
+    private var searchPending = false
+
+    func requestSearch() {
+        guard let left else { searchPending = true; return }
+        left.center.searchFiles()
+    }
+
+    func registerCoordinator(_ coordinator: WorkspaceCoordinator, isRight: Bool) {
+        if isRight { right = coordinator; return }
+        left = coordinator
+        if searchPending {
+            searchPending = false
+            coordinator.center.searchFiles()
+        }
+    }
+
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 880), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init(window: window)
@@ -189,7 +210,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         let content = NSHostingView(rootView: WorkspaceHost(registerCoordinator: { [weak self] coordinator, isRight in
-            if isRight { self?.right = coordinator } else { self?.left = coordinator }
+            self?.registerCoordinator(coordinator, isRight: isRight)
         }))
         content.frame = NSRect(origin: .zero, size: window.contentLayoutRect.size)
         content.autoresizingMask = [.width, .height]

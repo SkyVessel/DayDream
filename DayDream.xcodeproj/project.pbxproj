@@ -49,11 +49,14 @@
 		C593EEBA4498024820527D28 /* WritingToolPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45AD4661BD5DC1271CE7CF7 /* WritingToolPicker.swift */; };
 		C78D62B20440B431F1A836CD /* PageTitles.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB328B4217FC24836695207A /* PageTitles.swift */; };
 		D30F49C6533B1C8C814A0828 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA21A1B87C718C9A561E5FE /* WorkspaceView.swift */; };
+		DB2C4FFC034A91ABE1558CAF /* WordImportSemantics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 637BD0F17445459674B82042 /* WordImportSemantics.swift */; };
+		DC3A62973C93859A5398A135 /* WordDocumentExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1570C5F207B086093899C65F /* WordDocumentExporter.swift */; };
 		DEF4341EB2B6B59D340A59E8 /* ShortcutCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2898850E929372DCC72BC866 /* ShortcutCenter.swift */; };
 		F5BB2A1D6654DB2DF65FB483 /* DayDreamIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E831C2833ECB93F21087BB1 /* DayDreamIcon.swift */; };
 		F6B9E18F292510E555A07512 /* MediaResources.swift in Sources */ = {isa = PBXBuildFile; fileRef = F38BBE63526C9FF81E2B182E /* MediaResources.swift */; };
 		F7A164BF43A3AB19EB093CFA /* EditorWritingFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADDC3E419174F38D98E2DAB /* EditorWritingFeatures.swift */; };
 		F88280779A73C63BB755A4A8 /* WritingFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADE0975B0B7BD6744467EFE1 /* WritingFeatures.swift */; };
+		FBFE0C7DE5702DFEE4B36ECE /* DocumentExportLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC7C56A5AC09F604822740E /* DocumentExportLayout.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -62,7 +65,9 @@
 		0B839D036EDA6B52A8CF7436 /* PDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentView.swift; sourceTree = "<group>"; };
 		1443F9A38953F0D33EC977F3 /* DocumentAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentAppearance.swift; sourceTree = "<group>"; };
 		1515C080E5837E3FB53BECD0 /* DayDreamApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayDreamApp.swift; sourceTree = "<group>"; };
+		1570C5F207B086093899C65F /* WordDocumentExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordDocumentExporter.swift; sourceTree = "<group>"; };
 		1E831C2833ECB93F21087BB1 /* DayDreamIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayDreamIcon.swift; sourceTree = "<group>"; };
+		1EC7C56A5AC09F604822740E /* DocumentExportLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentExportLayout.swift; sourceTree = "<group>"; };
 		21C03369FDD4983D1E5D3E63 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2898850E929372DCC72BC866 /* ShortcutCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutCenter.swift; sourceTree = "<group>"; };
 		2C9A0F42C000EE80EAF5DF2D /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -75,6 +80,7 @@
 		51E4AB307770BB88100AE3C5 /* MarkdownEditingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditingController.swift; sourceTree = "<group>"; };
 		5903F43CD9F3636653C1DA62 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		5CA9DD8667F1E6B5C7F42F7F /* EditorStyleTransactions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorStyleTransactions.swift; sourceTree = "<group>"; };
+		637BD0F17445459674B82042 /* WordImportSemantics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordImportSemantics.swift; sourceTree = "<group>"; };
 		79750163974B370BFED0A146 /* InlineMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineMarkdown.swift; sourceTree = "<group>"; };
 		80226916E74C14F75A22E0D5 /* ExternalDocumentWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDocumentWindow.swift; sourceTree = "<group>"; };
 		8E95B111C8410F046F9FC9A1 /* EditorDisplayCommit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorDisplayCommit.swift; sourceTree = "<group>"; };
@@ -118,6 +124,7 @@
 				F563FEC3325A0088F9CF7C2E /* DayDreamTextView.swift */,
 				1443F9A38953F0D33EC977F3 /* DocumentAppearance.swift */,
 				DF2ACA8E750D55A80B92502C /* DocumentController.swift */,
+				1EC7C56A5AC09F604822740E /* DocumentExportLayout.swift */,
 				967D92CA544B93D81050BE1E /* DocumentTransferService.swift */,
 				8E95B111C8410F046F9FC9A1 /* EditorDisplayCommit.swift */,
 				AB819AF4DD83E738CC0CDE8F /* EditorMediaFeatures.swift */,
@@ -150,6 +157,8 @@
 				AC856DE1D43E73CD29ED57DC /* SourcePreservingMarkdown.swift */,
 				C14BF94691EAF61EDE663F0E /* Theme.swift */,
 				9E538E21FDC177BE18015D34 /* TypingAnimation.swift */,
+				1570C5F207B086093899C65F /* WordDocumentExporter.swift */,
+				637BD0F17445459674B82042 /* WordImportSemantics.swift */,
 				D410836B028A701DA30A117A /* WorkspaceHost.swift */,
 				369DDD377014F250F556077E /* WorkspaceStore.swift */,
 				ACA21A1B87C718C9A561E5FE /* WorkspaceView.swift */,
@@ -265,6 +274,7 @@
 				ADF0C4C118299CDF7C3310C5 /* DayDreamTextView.swift in Sources */,
 				4379E24FF85995CBE480FFFD /* DocumentAppearance.swift in Sources */,
 				746791FFFE18F0917FAE1FD6 /* DocumentController.swift in Sources */,
+				FBFE0C7DE5702DFEE4B36ECE /* DocumentExportLayout.swift in Sources */,
 				ABC47A1262E99007BABDB413 /* DocumentTransferService.swift in Sources */,
 				2B77CA21A98F48B5472049F7 /* EditorDisplayCommit.swift in Sources */,
 				40CE52AA8777E3E6DC5D7D73 /* EditorMediaFeatures.swift in Sources */,
@@ -297,6 +307,8 @@
 				01AE9C7CFD6A267380AAC307 /* SourcePreservingMarkdown.swift in Sources */,
 				5E0C26E27AA218E9F426A1B4 /* Theme.swift in Sources */,
 				571F1EC96581FF18CD0B421F /* TypingAnimation.swift in Sources */,
+				DC3A62973C93859A5398A135 /* WordDocumentExporter.swift in Sources */,
+				DB2C4FFC034A91ABE1558CAF /* WordImportSemantics.swift in Sources */,
 				C0845EBF3FCBAFC4D774E147 /* WorkspaceHost.swift in Sources */,
 				30FE6071F3B1F19B14F7F9FB /* WorkspaceStore.swift in Sources */,
 				D30F49C6533B1C8C814A0828 /* WorkspaceView.swift in Sources */,

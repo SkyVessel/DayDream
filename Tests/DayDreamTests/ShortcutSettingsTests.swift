@@ -4,6 +4,34 @@ import XCTest
 
 @MainActor
 final class ShortcutSettingsTests: XCTestCase {
+    func testOptionSpaceFromMacKeyboardRoutesToSearch() throws {
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 49, keyDown: true))
+        event.flags = .maskAlternate
+        let key = try XCTUnwrap(NSEvent(cgEvent: event))
+        let preferences = makePreferences()
+        XCTAssertEqual(preferences.command(matching: key), .searchFiles)
+        for sidebar in [false, true] {
+            XCTAssertEqual(ShortcutEventRouter.command(matching: key, preferences: preferences, isSidebarFocused: sidebar), .searchFiles)
+        }
+    }
+
+    func testSearchWaitsForWorkspaceRegistrationAndRunsOnce() {
+        let window = WorkspaceWindowController()
+        window.requestSearch()
+        let center = ShortcutCenter()
+        let coordinator = WorkspaceCoordinator(center: center)
+        var searches = 0
+        center.searchFiles = { searches += 1 }
+        window.registerCoordinator(coordinator, isRight: true)
+        XCTAssertEqual(searches, 0)
+        window.registerCoordinator(coordinator, isRight: false)
+        XCTAssertEqual(searches, 1)
+        window.registerCoordinator(coordinator, isRight: false)
+        XCTAssertEqual(searches, 1)
+        window.requestSearch()
+        XCTAssertEqual(searches, 2)
+    }
+
     func testDefaultsMatchCurrentApplicationShortcuts() {
         let preferences = makePreferences()
 

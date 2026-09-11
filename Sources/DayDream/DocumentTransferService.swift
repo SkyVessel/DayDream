@@ -90,58 +90,16 @@ final class DocumentTransferService {
         try Data(markdown.utf8).write(to: destination, options: .atomic)
     }
 
-    func exportPDF(_ markdown: String, to destination: URL, sourceURL: URL? = nil, mode: DocumentAppearance = .light) throws {
-        let storage = NSTextStorage(attributedString: attributedWordDocument(from: markdown, sourceURL: sourceURL, mode: mode))
-        let manager = NSLayoutManager()
-        storage.addLayoutManager(manager)
-        let data = NSMutableData()
-        guard let consumer = CGDataConsumer(data: data) else { throw DocumentTransferError.destinationUnavailable }
-        var page = CGRect(x: 0, y: 0, width: 612, height: 792)
-        guard let context = CGContext(consumer: consumer, mediaBox: &page, [kCGPDFContextSubject as String: "DayDream " + mode.rawValue] as CFDictionary) else { throw DocumentTransferError.destinationUnavailable }
-        var previousEnd = 0
-        repeat {
-            let container = NSTextContainer(containerSize: NSSize(width: 468, height: 648))
-            container.lineFragmentPadding = 0
-            manager.addTextContainer(container)
-            manager.ensureLayout(for: container)
-            let range = manager.glyphRange(for: container)
-            context.beginPDFPage(nil)
-            context.setFillColor(mode.background.cgColor)
-            context.fill(page)
-            context.saveGState()
-            context.translateBy(x: 72, y: 720)
-            context.scaleBy(x: 1, y: -1)
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-            manager.drawBackground(forGlyphRange: range, at: .zero)
-            manager.drawGlyphs(forGlyphRange: range, at: .zero)
-            NSGraphicsContext.restoreGraphicsState()
-            context.restoreGState()
-            context.endPDFPage()
-            let end = NSMaxRange(range)
-            if end >= manager.numberOfGlyphs || end <= previousEnd { break }
-            previousEnd = end
-        } while true
-        context.closePDF()
-        try (data as Data).write(to: destination, options: .atomic)
+    @MainActor
+    func exportPDF(_ markdown: String, to destination: URL, sourceURL: URL? = nil, mode: DocumentAppearance = .light, editor: DayDreamTextView? = nil) throws {
+        let layout = DocumentExportLayout(markdown: markdown, sourceURL: sourceURL, mode: mode, source: editor)
+        try layout.pdfData().write(to: destination, options: .atomic)
     }
 
-    func exportWord(_ markdown: String, to destination: URL, sourceURL: URL? = nil, mode: DocumentAppearance = .light) throws {
-        let attributed = attributedWordDocument(from: markdown, sourceURL: sourceURL, mode: mode)
-        let attributes: [NSAttributedString.DocumentAttributeKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.officeOpenXML,
-            .backgroundColor: mode.background,
-            .paperSize: NSSize(width: 612, height: 792),
-            .leftMargin: 72,
-            .rightMargin: 72,
-            .topMargin: 72,
-            .bottomMargin: 72
-        ]
-        let data = try attributed.data(
-            from: NSRange(location: 0, length: attributed.length),
-            documentAttributes: attributes
-        )
-        try data.write(to: destination, options: .atomic)
+    @MainActor
+    func exportWord(_ markdown: String, to destination: URL, sourceURL: URL? = nil, mode: DocumentAppearance = .light, editor: DayDreamTextView? = nil) throws {
+        let layout = DocumentExportLayout(markdown: markdown, sourceURL: sourceURL, mode: .light, source: editor)
+        try WordDocumentExporter.data(layout: layout).write(to: destination, options: .atomic)
     }
 
     func markdown(fromWordDocument url: URL) throws -> String {
@@ -153,156 +111,7 @@ final class DocumentTransferService {
         ) else {
             throw DocumentTransferError.unreadableWordDocument
         }
-        return markdown(from: attributed)
-    }
-
-    private func attributedWordDocument(from markdown: String, sourceURL: URL?, mode: DocumentAppearance = .light) -> NSAttributedString {
-        let document = MarkdownDocumentCodec.parse(markdown)
-        let result = NSMutableAttributedString()
-        var orderedNumber = 0
-
-        for (index, block) in document.blocks.enumerated() {
-            if index > 0 { result.append(NSAttributedString(string: "\n")) }
-
-            if let card = MediaCard.parse(block.text) {
-                if card.kind == .image, let url = card.resolvedURL(documentURL: sourceURL), url.isFileURL,
-                   let image = NSImage(contentsOf: url) {
-                    let attachment = NSTextAttachment()
-                    attachment.image = image
-                    let width = min(440, image.size.width, 600 * image.size.width / max(1, image.size.height))
-                    attachment.bounds = NSRect(x: 0, y: 0, width: width, height: width * image.size.height / max(1, image.size.width))
-                    result.append(NSAttributedString(attachment: attachment))
-                } else {
-                    result.append(NSAttributedString(string: "\(card.title) (\(card.source))", attributes: [.font: NSFont.systemFont(ofSize: 11.5)]))
-                }
-                continue
-            }
-            let prefix: String
-            let font: NSFont
-            switch block.kind {
-            case .divider:
-                orderedNumber = 0
-                prefix = "────────────────"
-                font = .systemFont(ofSize: 11.5)
-            case .body:
-                orderedNumber = 0
-                prefix = ""
-                font = .systemFont(ofSize: 11.5)
-            case let .heading(level):
-                orderedNumber = 0
-                prefix = ""
-                font = .systemFont(ofSize: headingSize(level), weight: .bold)
-            case .bullet:
-                orderedNumber = 0
-                prefix = block.indentation + "• "
-                font = .systemFont(ofSize: 11.5)
-            case .numbered:
-                orderedNumber = orderedNumber == 0 ? block.orderedStart : orderedNumber + 1
-                prefix = block.indentation + "\(orderedNumber). "
-                font = .systemFont(ofSize: 11.5)
-            case let .todo(checked):
-                orderedNumber = 0
-                prefix = block.indentation + (checked ? "☒ " : "☐ ")
-                font = .systemFont(ofSize: 11.5)
-            case .translation:
-                orderedNumber = 0
-                prefix = ""
-                font = .systemFont(ofSize: 11.5)
-            case .quote:
-                orderedNumber = 0
-                prefix = "› "
-                font = .systemFont(ofSize: 11.5)
-            case .code:
-                orderedNumber = 0
-                prefix = ""
-                font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
-            }
-
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.paragraphSpacing = block.kind.isList ? 2 : 7
-            paragraphStyle.lineSpacing = 1.5
-            if block.kind.isList {
-                paragraphStyle.firstLineHeadIndent = 0
-                paragraphStyle.headIndent = 22
-            }
-
-            let lineStart = result.length
-            result.append(NSAttributedString(
-                string: prefix,
-                attributes: [.font: font, .foregroundColor: mode == .dark ? NSColor.white : NSColor.black]
-            ))
-            let parsed: (plain: String, runs: [InlineRun])
-            if case .code = block.kind { parsed = (block.text, []) }
-            else { parsed = InlineMarkdown.parse(block.text) }
-            let body = NSMutableAttributedString(
-                string: parsed.plain,
-                attributes: [.font: font, .foregroundColor: mode == .dark ? NSColor.white : NSColor.black]
-            )
-            for run in parsed.runs where NSMaxRange(run.range) <= body.length {
-                apply(run.style, to: body, range: run.range, baseFont: font, appearance: mode.appearance)
-            }
-            for run in parsed.runs.reversed() {
-                guard let destination = run.style.linkDestination,
-                      NSMaxRange(run.range) <= body.length else { continue }
-                body.insert(
-                    NSAttributedString(
-                        string: " (\(destination))",
-                        attributes: [.font: font, .foregroundColor: mode == .dark ? NSColor.lightGray : NSColor.darkGray]
-                    ),
-                    at: NSMaxRange(run.range)
-                )
-            }
-            result.append(body)
-            result.addAttribute(
-                .paragraphStyle,
-                value: paragraphStyle,
-                range: NSRange(location: lineStart, length: result.length - lineStart)
-            )
-        }
-        return result
-    }
-
-    private func apply(
-        _ style: InlineStyle,
-        to text: NSMutableAttributedString,
-        range: NSRange,
-        baseFont: NSFont,
-        appearance: NSAppearance
-    ) {
-        var font = style.fontFamily.flatMap { NSFont(name: $0, size: baseFont.pointSize) } ?? baseFont
-        var traits: NSFontTraitMask = []
-        if style.bold { traits.insert(.boldFontMask) }
-        if style.italic { traits.insert(.italicFontMask) }
-        if style.code {
-            font = .monospacedSystemFont(ofSize: baseFont.pointSize, weight: style.bold ? .bold : .regular)
-        }
-        if !traits.isEmpty, let converted = NSFontManager.shared.convert(font, toHaveTrait: traits) as NSFont? {
-            font = converted
-        }
-        text.addAttribute(.font, value: font, range: range)
-        if style.underline { text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
-        if style.strikethrough { text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range) }
-        if let destination = style.linkDestination, let url = URL(string: destination) {
-            text.addAttributes([.link: url, .foregroundColor: NSColor.systemBlue], range: range)
-        }
-        if let preset = style.textColor.flatMap(StyleColorPreset.init(rawValue:)) {
-            text.addAttribute(
-                .foregroundColor,
-                value: DayDreamTheme.inlineTextColor(preset.rawValue, for: appearance),
-                range: range
-            )
-        }
-        if let preset = style.highlight.flatMap(StyleColorPreset.init(rawValue:)) {
-            text.addAttribute(
-                .backgroundColor,
-                value: DayDreamTheme.inlineHighlightColor(preset.rawValue, for: appearance),
-                range: range
-            )
-        }
-        if style.strikethrough, range.length > 0,
-           let color = text.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor {
-            text.addAttribute(.foregroundColor, value: color.withAlphaComponent(color.alphaComponent * 0.45), range: range)
-        }
+        return markdown(from: WordImportSemantics.restore(attributed, package: try Data(contentsOf: url)))
     }
 
     private func markdown(from attributed: NSAttributedString) -> String {
@@ -340,7 +149,7 @@ final class DocumentTransferService {
         range: NSRange
     ) -> (markdown: String, removedUTF16Length: Int) {
         let leadingCount = text.prefix(while: { $0 == " " || $0 == "\t" }).utf16.count
-        let trimmed = String(text.dropFirst(leadingCount))
+        let trimmed = String(text.dropFirst(leadingCount)).replacingOccurrences(of: "\t", with: " ")
         let indentation = String(text.prefix(leadingCount))
 
         if trimmed.hasPrefix("• ") { return (indentation + "- ", leadingCount + 2) }
@@ -354,25 +163,15 @@ final class DocumentTransferService {
             return (indentation + marker, leadingCount + marker.utf16.count)
         }
 
-        let font = range.length > 0 ? attributed.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont : nil
-        if let font, font.pointSize >= 13 {
-            let level: Int
-            switch font.pointSize {
-            case 21...: level = 1
-            case 17...: level = 2
-            case 14.5...: level = 3
-            default: level = 4
-            }
-            return (String(repeating: "#", count: level) + " ", 0)
-        }
+        let level = range.length > 0 ? (attributed.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle)?.headerLevel ?? 0 : 0
+        if level > 0 { return (String(repeating: "#", count: min(6, level)) + " ", 0) }
         return ("", 0)
     }
 
     private func inlineMarkdown(from attributed: NSAttributedString) -> String {
         guard attributed.length > 0 else { return "" }
         var output = ""
-        let firstFont = attributed.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-        let isHeading = (firstFont?.pointSize ?? 0) >= 13
+        let isHeading = ((attributed.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)?.headerLevel ?? 0) > 0
         attributed.enumerateAttributes(
             in: NSRange(location: 0, length: attributed.length),
             options: []
@@ -404,15 +203,6 @@ final class DocumentTransferService {
             range: fullRange,
             withTemplate: "[$1]($2)"
         )
-    }
-
-    private func headingSize(_ level: Int) -> CGFloat {
-        switch level {
-        case 1: return 24
-        case 2: return 20
-        case 3: return 16
-        default: return 13.5
-        }
     }
 
     private func isDirectory(_ url: URL) -> Bool {

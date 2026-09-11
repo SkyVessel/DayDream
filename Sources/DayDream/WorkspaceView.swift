@@ -638,7 +638,7 @@ struct WorkspaceView: View {
         panel.canCreateDirectories = true
         panel.prompt = L10n.t("导出", "Export")
         let appearancePicker = DocumentAppearancePicker(selection: DocumentAppearance.stored(for: url) ?? .current)
-        panel.accessoryView = appearancePicker
+        if format != .word { panel.accessoryView = appearancePicker }
         guard panel.runModal() == .OK, let destination = panel.url else { return }
 
         do {
@@ -649,9 +649,9 @@ struct WorkspaceView: View {
                 appearancePicker.selection.store(for: destination)
             case .pdf:
                 if document.isPDF { try service.exportPDFDocument(url, to: destination, mode: appearancePicker.selection) }
-                else { try service.exportPDF(document.markdown, to: destination, sourceURL: url, mode: appearancePicker.selection) }
+                else { try service.exportPDF(document.markdown, to: destination, sourceURL: url, mode: appearancePicker.selection, editor: coordinator.textView) }
             case .word:
-                try service.exportWord(document.markdown, to: destination, sourceURL: url, mode: appearancePicker.selection)
+                try service.exportWord(document.markdown, to: destination, sourceURL: url, mode: .light, editor: coordinator.textView)
             }
         } catch {
             store.errorMessage = error.localizedDescription

@@ -19,7 +19,7 @@ final class ShortcutCenter: ObservableObject {
     weak var documentResponder: NSView?
 
     // 由 WorkspaceView / SidebarView 注册
-    var searchFiles: () -> Void = {}
+    var searchFiles: () -> Void = { AppDelegate.current?.searchWorkspace() }
     var historyBack: () -> Void = {}
     var historyForward: () -> Void = {}
     var focusLeftPane: () -> Void = {}

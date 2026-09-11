@@ -4,7 +4,7 @@ import Foundation
 /// Only the application's own relative resource references are copied.
 enum MediaResources {
     static func copyAlongsideDocument(from source: URL, to destination: URL, markdown: String? = nil) throws {
-        guard source.pathExtension.lowercased() == "md",
+        guard ["md", "markdown"].contains(source.pathExtension.lowercased()),
               source.deletingLastPathComponent().standardizedFileURL != destination.deletingLastPathComponent().standardizedFileURL else { return }
         let text = try markdown ?? String(contentsOf: source, encoding: .utf8)
         let pattern = #"<figure data-daydream="[A-Za-z0-9+/=]+">.*?</figure>"#

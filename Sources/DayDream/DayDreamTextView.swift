@@ -1230,6 +1230,37 @@ final class DayDreamTextView: NSTextView {
         )
     }
 
+    /// Detached export renderer: shares document styling, never selection/focus overlays.
+    func prepareForExport(markdown: String, scale: CGFloat) {
+        zoomScale = scale
+        textStorage?.delegate = nil
+        textStorage?.setAttributedString(MarkdownTextStorage.attributedString(
+            from: MarkdownDocumentCodec.parse(markdown), appearance: effectiveAppearance, scale: scale))
+        if let storage = textStorage, storage.length > 0 {
+            applySpaceWidth(in: NSRange(location: 0, length: storage.length))
+        }
+        updatePageInsets()
+    }
+
+    func drawExportContent(in rect: NSRect) {
+        guard let layoutManager, let textContainer else { return }
+        drawInlineHighlights(in: rect)
+        let range = layoutManager.glyphRange(forBoundingRect: rect.offsetBy(
+            dx: -textContainerOrigin.x, dy: -textContainerOrigin.y), in: textContainer)
+        layoutManager.drawBackground(forGlyphRange: range, at: textContainerOrigin)
+        layoutManager.drawGlyphs(forGlyphRange: range, at: textContainerOrigin)
+        drawBlockDecorations(in: rect)
+        for media in mediaViews.values where media.frame.intersects(rect) {
+            NSGraphicsContext.saveGraphicsState()
+            let transform = NSAffineTransform()
+            transform.translateX(by: media.frame.minX, yBy: media.frame.minY)
+            transform.concat()
+            NSBezierPath(roundedRect: media.bounds, xRadius: 12, yRadius: 12).addClip()
+            media.draw(media.bounds)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+
     private func drawInlineHighlights(in dirtyRect: NSRect) {
         for fragment in inlineHighlightFragments() where fragment.rect.intersects(dirtyRect) {
             DayDreamTheme.inlineHighlightColor(fragment.preset, for: effectiveAppearance).setFill()
